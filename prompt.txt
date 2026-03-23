@@ -1,0 +1,314 @@
+Codex Prompt: Build snakee.io — A Multiplayer Snake Game
+Project Overview
+Build a fully functional, real-time multiplayer browser game called snakee.io — inspired by slither.io. Players control a snake that grows by consuming pellets and other players' remains. The last snake surviving wins. The game must be smooth, performant, and scalable.
+
+Game Analysis (slither.io Core Mechanics)
+Before building, understand these core systems:
+
+Movement: Snakes move continuously toward the cursor. Speed boosts are available at a stamina cost.
+Growth: Eating glowing pellets (orbs) increases snake length and score.
+Collision: If a snake's head touches any other snake's body, it dies and explodes into collectible orbs.
+Camera: The viewport follows the player's snake with smooth interpolation.
+Map: A large circular arena with boundary walls. Snakes die on boundary contact.
+Minimap: A small radar in the corner shows nearby snakes and the player's position.
+Leaderboard: Displays the top 10 snakes by size in real time.
+Bots: AI-controlled snakes fill the server to keep it lively at low player counts.
+
+
+Tech Stack & Frameworks
+Frontend
+
+Renderer: PixiJS v8 — WebGL-accelerated 2D renderer. Use for all game rendering: snakes, orbs, background, UI overlays.
+
+Why: Hardware-accelerated, handles thousands of sprites, built-in particle containers, excellent for real-time games.
+
+
+UI Layer: Plain HTML/CSS for HUD elements (leaderboard, score, death screen). Keep DOM manipulation minimal.
+Bundler: Vite — Fast dev server, optimized production builds, ESM-native.
+Language: TypeScript — for type safety on shared game state and network messages.
+
+Backend
+
+Runtime: Node.js with uWebSockets.js — the fastest WebSocket server available for Node. Critical for low-latency multiplayer.
+
+Why over Socket.io: uWS is 5–10× faster in throughput; Socket.io adds overhead not needed here.
+
+
+Game Loop: Custom fixed-timestep loop at 20 ticks/sec server-side. Client renders at 60fps with interpolation.
+Shared Types: A /shared directory with TypeScript types for all network messages (snake state, orb positions, events). Imported by both client and server.
+
+Networking Protocol
+
+Transport: Binary WebSocket messages using MessagePack (via msgpackr) — compact binary serialization, faster and smaller than JSON.
+State Sync: Server sends delta updates (only changed entities), not full world state each tick.
+
+
+Project Structure
+snakee.io/
+├── client/
+│   ├── src/
+│   │   ├── main.ts              # Entry point, Pixi app init
+│   │   ├── game/
+│   │   │   ├── GameScene.ts     # Main Pixi scene, tick loop
+│   │   │   ├── SnakeRenderer.ts # Draws smooth snake bodies
+│   │   │   ├── OrbRenderer.ts   # Draws pellet orbs
+│   │   │   ├── Camera.ts        # Viewport follow + zoom
+│   │   │   └── InputHandler.ts  # Mouse/touch input
+│   │   ├── ui/
+│   │   │   ├── HUD.ts           # Score, leaderboard overlay
+│   │   │   └── DeathScreen.ts   # Respawn UI
+│   │   └── net/
+│   │       └── Socket.ts        # WS client, message parsing
+│   └── index.html
+├── server/
+│   ├── src/
+│   │   ├── index.ts             # uWS server, connection handling
+│   │   ├── game/
+│   │   │   ├── World.ts         # Game world state, tick loop
+│   │   │   ├── Snake.ts         # Snake entity logic
+│   │   │   ├── OrbManager.ts    # Orb spawning and collection
+│   │   │   ├── BotAI.ts         # Bot snake behavior
+│   │   │   └── Collision.ts     # Spatial hashing for collisions
+│   │   └── net/
+│   │       └── Broadcaster.ts   # Delta state broadcasting
+├── shared/
+│   └── types.ts                 # Shared TS types & message schemas
+├── rules.md                     # Agent behavior rules (see rules.md)
+├── vite.config.ts
+├── tsconfig.json
+└── package.json
+
+Build Steps (Ordered: Easy → Hard)
+Follow these steps in order. Do not skip ahead. Complete and verify each step before proceeding.
+
+Phase 1 — Project Scaffolding
+Step 1 — Initialize the monorepo
+
+Create the directory structure above.
+Set up package.json at root with workspaces: ["client", "server", "shared"].
+Install: pixi.js, vite, typescript, uWebSockets.js, msgpackr.
+Add scripts: dev (runs Vite + server concurrently), build, start.
+
+Step 2 — Shared types
+
+In shared/types.ts, define TypeScript interfaces for:
+
+SnakeState (id, segments: {x,y}[], color, name, score, alive)
+OrbState (id, x, y, color, size)
+All WebSocket message types: WelcomeMsg, TickMsg, DeathMsg, InputMsg
+
+
+
+Step 3 — Static game canvas
+
+Set up a PixiJS Application in client/src/main.ts.
+Render a dark tiled/hex-grid background (the arena floor).
+Draw a large circle as the arena boundary.
+No game logic yet — just a pretty, correctly sized canvas that fills the screen.
+
+
+Phase 2 — Client-Side Snake Rendering
+Step 4 — Snake body rendering
+
+In SnakeRenderer.ts, implement a smooth snake body using PixiJS Graphics.
+Each segment is a circle. Use PIXI.Graphics smooth curve (bezierCurveTo) to draw a filled body path connecting segments.
+Support per-snake colors. Add a bright glowing head (larger circle, bloom-like glow using filters).
+
+Step 5 — Camera system
+
+In Camera.ts, implement a camera that:
+
+Smoothly follows the player's snake head using lerp (linear interpolation).
+Applies a zoom that scales slightly based on snake speed.
+Clamps to arena boundaries so the world doesn't scroll past edges.
+
+
+
+Step 6 — Input handling
+
+In InputHandler.ts:
+
+Track mouse/touch position relative to canvas center.
+Calculate the angle from center to cursor.
+Track spacebar/right-click for boost.
+Emit input state at 30Hz to the server.
+
+
+
+Step 7 — Orb rendering
+
+In OrbRenderer.ts, use a PIXI.ParticleContainer for performance.
+Orbs are small glowing circles. Add a gentle pulse animation (scale oscillation using ticker).
+Support thousands of orbs simultaneously without frame drops.
+
+
+Phase 3 — Server Game Logic
+Step 8 — Game world and tick loop
+
+In World.ts, implement a fixed 20-tick/sec game loop using setInterval.
+Maintain a Map<id, Snake> and an orb list.
+Each tick: process inputs, move snakes, check orb collection, broadcast state.
+
+Step 9 — Snake movement
+
+In Snake.ts, implement:
+
+Continuous directional movement toward a target angle.
+Smooth turning (angular velocity capped per tick — snakes can't flip instantly).
+Speed boost consuming a stamina/energy value that regenerates over time.
+Segment trailing: each body segment follows the one ahead with a fixed distance.
+
+
+
+Step 10 — Orb management
+
+In OrbManager.ts:
+
+Randomly spawn orbs across the arena up to a max count (e.g. 2000).
+Respawn orbs consumed by snakes to maintain density.
+When a snake dies, spawn orbs at its segment positions proportional to its length.
+
+
+
+Step 11 — WebSocket server
+
+In server/src/index.ts, set up uWebSockets.js:
+
+Handle open, message, close events.
+On connect: send WelcomeMsg with player ID, world size, initial state.
+On message: parse input using msgpackr, update snake's target angle and boost state.
+Each tick: serialize delta state with msgpackr, broadcast to all connected clients.
+
+
+
+
+Phase 4 — Networking & State Sync
+Step 12 — Client network layer
+
+In net/Socket.ts:
+
+Connect to the WebSocket server.
+Parse incoming binary messages using msgpackr.
+Expose event emitters: onWelcome, onTick, onDeath.
+Send input messages at 30Hz.
+
+
+
+Step 13 — Client-side interpolation
+
+On each render tick (60fps), interpolate all snake segment positions between the last two received server states.
+Use alpha = timeSinceLastTick / tickInterval for lerp factor.
+This makes movement appear silky smooth regardless of server tick rate.
+
+
+Phase 5 — HUD & UI
+Step 14 — Score and leaderboard
+
+In HUD.ts, use DOM elements (positioned with CSS) overlaid on the canvas:
+
+Top-right: live leaderboard of top 10 snakes (name + score).
+Bottom-left: player's current score and length.
+Both update on every received tick.
+
+
+
+Step 15 — Minimap
+
+Draw a small circular minimap in the bottom-right corner using a secondary PixiJS Graphics object.
+Show all snake head positions as colored dots.
+Show the player's position as a larger bright dot.
+Scale positions from world coordinates to minimap size.
+
+Step 16 — Death screen and respawn
+
+When a DeathMsg is received:
+
+Show a stylized death overlay: final score, killer name (if killed by another player), a "Play Again" button.
+On "Play Again": reconnect (or send a respawn message) and return to game.
+
+
+
+
+Phase 6 — Bot AI
+Step 17 — Basic bot behavior
+
+In BotAI.ts, implement simple bots that:
+
+Wander randomly, steering toward nearby orbs.
+Avoid the arena boundary (steer inward when near the edge).
+Run pathfinding toward the nearest large orb cluster using a simple greedy approach.
+
+
+
+Step 18 — Advanced bot behavior
+
+Upgrade bots to:
+
+Detect nearby player snakes and attempt the classic "coil trap" (circle ahead of a smaller snake to cut it off).
+Flee from snakes larger than themselves.
+Use boost strategically: only when collecting a large orb cluster or escaping danger.
+
+
+
+
+Phase 7 — Performance & Polish
+Step 19 — Spatial hashing for collision detection
+
+In Collision.ts, implement a spatial hash grid (cell size ~snake diameter).
+Insert all snake segments into the grid each tick.
+For each snake head, only check segments in neighboring cells — O(1) average lookup instead of O(n²).
+This is essential for scaling to 50+ concurrent snakes.
+
+Step 20 — Delta compression & bandwidth optimization
+
+In Broadcaster.ts:
+
+Track each client's last acknowledged state.
+Send only entities that changed since last broadcast (position delta > threshold).
+Cull entities outside the client's visible viewport — don't send data for snakes/orbs the player can't see.
+
+
+
+Step 21 — Visual polish
+
+Add to the client:
+
+Particle burst effect when a snake dies (orbs flying outward using PixiJS particles).
+Subtle glow/bloom shader on snake heads using PIXI.BlurFilter layered with full-opacity head.
+Smooth camera shake on death.
+Background parallax scrolling grid (slow movement offset from camera for depth).
+Animated gradient skin options for snakes (cycle hue over time).
+
+
+
+Step 22 — Mobile touch support
+
+Add a virtual joystick for mobile: a fixed circle in the bottom-left.
+Touch direction from joystick center = snake direction.
+Double-tap = boost.
+Ensure canvas resizes correctly on orientation change.
+
+
+Phase 8 — Deployment
+Step 23 — Production build
+
+Configure Vite for production: minify, tree-shake, chunk splitting.
+Set up a Dockerfile for the server.
+Serve the Vite-built client static files from the Node server in production mode.
+
+Step 24 — Scaling (optional/stretch)
+
+Add room-based matchmaking: multiple World instances per server process.
+Add a Redis adapter for horizontal scaling across multiple Node processes.
+
+
+Performance Targets
+MetricTargetClient FPSStable 60fps with 30+ snakes visibleServer tick rate20 ticks/sec with 100 concurrent playersNetwork payload per tick< 2KB per client (after delta + culling)Collision check per tick< 5ms with 100 snakes via spatial hashOrbs rendered1000+ with no frame drop (ParticleContainer)
+
+Reference for Game Feel
+
+Snake head should always be slightly larger and brighter than body.
+Turning should feel slightly "weighty" — not instant, but responsive.
+Boost should feel fast and risky — visually communicate stamina drain.
+Orb collection should have a satisfying pop/pulse feedback.
+Death should feel dramatic — not frustrating. Show what killed you.

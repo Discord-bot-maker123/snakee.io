@@ -1,0 +1,7 @@
+node_modules/
+dist/
+shared/dist/
+client/dist/
+server/dist/
+.npm-cache/
+.env

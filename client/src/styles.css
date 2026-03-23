@@ -1,0 +1,355 @@
+:root {
+  /* changed by gemini */
+  --bg: #0b0e14;
+  --panel: rgba(20, 25, 35, 0.82);
+  --line: rgba(255, 255, 255, 0.12);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --text: #ffffff;
+  --accent: #4ade80;
+  --accent-2: #facc15;
+  --danger: #ef4444;
+  --slither-green: #2ecc71;
+  --slither-blue: #3498db;
+  --slither-purple: #9b59b6;
+  --slither-red: #e74c3c;
+  --slither-yellow: #f1c40f;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* changed by gemini */
+  background: #05070a;
+  color: var(--text);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#game-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* changed by gemini - simplified overlay */
+#game-root::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.5) 100%);
+  z-index: 19;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud-root {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+.hud-panel {
+  /* changed by gemini - minimalist slither panels */
+  border: none;
+  background: transparent;
+  padding: 10px;
+  min-width: 150px;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.hud-title {
+  /* changed by gemini */
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.hud-row {
+  /* changed by gemini */
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  font-size: 14px;
+  margin-bottom: 1px;
+  padding: 1px 0;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.hud-row-top {
+  /* changed by gemini */
+  color: #fff;
+  font-weight: bold;
+}
+
+.hud-score {
+  /* changed by gemini */
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.hud-leaderboard {
+  /* changed by gemini */
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  text-align: right;
+}
+
+.hud-leaderboard .hud-row {
+  justify-content: flex-end;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.hud-leaderboard .hud-row span:first-child {
+  margin-right: 10px;
+}
+
+.hud-value {
+  /* changed by gemini */
+  font-size: 15px;
+  font-weight: normal;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.death-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  animation: fade-in 200ms ease-out;
+  z-index: 40;
+}
+
+.death-overlay.hidden {
+  display: none;
+}
+
+.death-card {
+  /* changed by gemini */
+  pointer-events: auto;
+  border: 4px solid #fff;
+  border-radius: 40px;
+  background: #2c3e50;
+  padding: 30px;
+  text-align: center;
+  color: #fff;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+.death-card h2 {
+  /* changed by gemini */
+  margin: 0 0 10px;
+  font-size: 32px;
+  color: #f1c40f;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.death-card p {
+  /* changed by gemini */
+  margin: 0 0 20px;
+  font-size: 18px;
+}
+
+.death-card button {
+  /* changed by gemini */
+  border: none;
+  background: #2ecc71;
+  color: white;
+  padding: 12px 30px;
+  border-radius: 20px;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.death-card button:hover {
+  background: #27ae60;
+}
+
+.menu-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* changed by gemini - exact match for the image background */
+  background: #161c22;
+  overflow: hidden;
+}
+
+.menu-hidden {
+  display: none;
+}
+
+.menu-rays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.06) 0 2px, transparent 3px),
+    radial-gradient(circle at 75% 70%, rgba(255, 255, 255, 0.05) 0 2px, transparent 3px);
+  opacity: 0.4;
+}
+
+.menu-center {
+  /* changed by gemini */
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 25px;
+  animation: menu-fade-in 1.2s ease-out;
+}
+
+.menu-logo {
+  /* changed by gemini */
+  margin-bottom: 10px;
+}
+
+.menu-logo-text {
+  /* changed by gemini - exact slither.io logo style */
+  font-size: 110px;
+  font-weight: 800;
+  letter-spacing: -4px;
+  /* Green for "slither", purple for ".io" via background-clip or span */
+  display: flex;
+  align-items: baseline;
+  filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.6));
+}
+
+.logo-slither {
+  /* changed by gemini */
+  color: #4ade80;
+  background: linear-gradient(180deg, #7cfba0 0%, #2ecc71 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-dot-io {
+  /* changed by gemini */
+  color: #a855f7;
+  background: linear-gradient(180deg, #c084fc 0%, #9333ea 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.menu-subtitle {
+  /* changed by gemini */
+  color: #7c3aed;
+  font-size: 16px;
+  margin-top: -10px;
+  margin-bottom: 20px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.menu-nickname {
+  /* changed by gemini - match the dark purple rounded input */
+  width: 280px;
+  border: 3px solid #000;
+  border-radius: 40px;
+  padding: 14px 25px;
+  text-align: center;
+  font-size: 20px;
+  color: #a78bfa;
+  background: #4c467d;
+  outline: none;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+}
+
+.menu-nickname::placeholder {
+  /* changed by gemini */
+  color: rgba(167, 139, 250, 0.6);
+}
+
+.menu-play {
+  /* changed by gemini - match the green rounded play button */
+  border: none;
+  border-radius: 40px;
+  padding: 12px 45px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #fff;
+  background: linear-gradient(180deg, #589b7c 0%, #3e7a5d 100%);
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s;
+}
+
+.menu-play:hover {
+  /* changed by gemini */
+  transform: scale(1.05);
+}
+
+@keyframes menu-fade-in {
+  /* changed by gemini */
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.menu-stats {
+  /* changed by gemini */
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  text-align: center;
+  margin-top: 20px;
+}
+
+.menu-stats h4 {
+  margin: 0 0 5px;
+  color: #fff;
+  font-size: 18px;
+}
+
+.menu-stats-left, .menu-stats-right {
+  position: static;
+  padding: 0;
+}
+
+.menu-settings {
+  /* changed by gemini */
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 760px) {
+  .menu-logo-text {
+    font-size: 50px;
+  }
+  .menu-nickname {
+    width: 200px;
+  }
+  .menu-center {
+    padding: 20px;
+  }
+}

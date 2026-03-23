@@ -1,0 +1,23 @@
+{
+  "name": "snakee-shared",
+  "private": true,
+  "type": "module",
+  "main": "dist/constants.js",
+  "types": "dist/constants.d.ts",
+  "exports": {
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "default": "./dist/constants.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

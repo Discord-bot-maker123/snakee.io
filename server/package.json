@@ -1,0 +1,20 @@
+{
+  "name": "snakee-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "uWebSockets.js": "uNetworking/uWebSockets.js#v20.56.0",
+    "msgpackr": "^1.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "typescript": "^5.6.3",
+    "tsx": "^4.7.1"
+  }
+}
+

@@ -1,0 +1,21 @@
+{
+  "name": "snakee-io",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "dev": "concurrently \"npm:dev --workspace client\" \"npm:dev --workspace server\"",
+    "dev:client": "npm run dev --workspace client",
+    "dev:server": "npm run dev --workspace server",
+    "build": "npm run build --workspace shared && npm run build --workspace client && npm run build --workspace server",
+    "check": "npm run build",
+    "start": "npm run start --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

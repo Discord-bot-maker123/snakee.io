@@ -1,0 +1,34 @@
+# Changelog
+
+## 2026-03-23
+
+- Fixed bot steering loops that caused orbit-lock behavior by introducing stateful bot modes (`seek_orb`, `wander`, `recover`) and stuck recovery in server bot AI.
+- Added opt-in runtime bot diagnostics behind `BOT_DEBUG_LOGS=1` for mode changes, stuck detection, and target resets.
+- Updated `Rules.md` with explicit anti-circling bot requirements, stateful steering guidance, and project-log maintenance policy.
+- Tightened seek-mode steering to avoid endless orbiting around close targets by adding no-progress orbit-break recovery and limiting rapid target-angle rewrites.
+- Updated spawn selection so human players spawn near active snakes and new bots preferentially spawn near humans to keep nearby encounters consistent.
+- Added a player-anchor vicinity model: each bot now references the nearest human head, stays within leash distance, and biases wander/seek around that anchor so bots remain near player camera space more consistently.
+- Fixed stale bot AI memory buildup by deleting bot brain state on bot removal/death.
+- Changed bot spawn policy to always anchor near a human when humans are present (instead of probabilistic 85% behavior).
+- Updated death messaging payload/UI to include `killerName`, so crash screen shows readable snake names instead of raw ids when available.
+- Restyled snake rendering to match the provided reference more closely: each snake now uses one stable two-color theme (shared across snakes), with a thicker body profile and a larger white cartoon head/eyes.
+- Applied the selected "Bioluminescent Deep Sea" frontend direction to HUD/menu/death overlays: organic bubble-like panels, sea-tone palette, softer motion, and "REABSORBED" death presentation.
+- Fixed menu play-flow regression from frontend restyling by restoring `.menu-hidden` behavior and menu overlay layering (`menu-rays` + centered z-order), so clicking Play properly removes the menu.
+- Added classic fast-move mass shedding: while boosting, snakes now periodically drop small tail orbs and lose tail segments, creating a speed-vs-size tradeoff.
+- Added a boost lock rule for both players and bots: after a snake grows beyond a configured orb-gain threshold from starting size, boost input is ignored.
+- Fixed boost-lock regression by switching the lock condition to lifetime `orbsEaten` (stable progression metric) and raising the default threshold.
+- Reworked boost gating to size-based rules: boost can start at 6+ segments and mass shedding now stops at the hard 3-segment minimum.
+- Fixed boost shedding burst behavior by clearing inactive boost timers (no time banking), and tuned shedding to one orb per second while boosting.
+- Upgraded bot survival AI: bots now detect nearby large snakes (2x length rule), evade instead of charging into them, and switch to trapped-circling behavior when surrounded by threats.
+- Replaced head-only bot threat detection with segment hazard mapping so bots avoid enemy bodies/tails, reducing kamikaze tail-follow deaths.
+- Fixed bot hazard modes so `body_avoid` and `trapped_survival` persist for their configured durations instead of immediately falling back into orb-seeking on the next tick.
+- Refined bot behavior toward human-like survival play: proximity-based threat evasion (all nearby snakes, stronger for larger ones), danger-first boost usage with cooldown, smooth non-linear steering noise, prey-vs-mass target balancing, and queued safe mass collection.
+- Introduced a lightweight model-based bot planner (feature-scored rollout over candidate actions) so steering/boost decisions are selected via short-horizon utility scoring instead of only rule-branches.
+- Added a hard proximity-escape layer: bots now immediately choose a safer heading away from nearby snakes (all snakes, size-weighted), with more reliable danger boost activation during close escapes.
+- Added bot-mode idle optimization: when no human snake is alive, world simulation work is paused (bots stop acting) until a human rejoins; also reduced per-tick overhead by optimizing leaderboard generation and skipping broadcast work when no clients are connected.
+- Fixed weak bot boost usage: bots can now start boost at a lower bot-specific segment threshold, and danger-mode boost triggers were relaxed so close-threat escapes use boost more reliably.
+- Bot behavior polish pass from evaluation: increased threat alert radius for faster reaction, moved steering noise before safety validation, added trapped-survival breakout boost after prolonged circling, increased hazard sampling resolution, and introduced orb spatial filtering so bots only score nearby visible orbs.
+- Increased bot boost frequency: reduced boost cooldown windows, relaxed danger-trigger thresholds, and enabled opportunistic boost usage during hunt/collect/wander phases.
+- Tuned boost movement to be more erratic: boosted paths now add stronger wobble, shorter cooldowns, and more frequent boost bursts across escape, hunt, collect, and wander states.
+- Improved bot mass gathering by registering recent death-mass clusters and steering toward dense orb hotspots instead of only chasing individual orbs.
+- Further tuned boost dynamics so bot boosts hold for short bursts instead of flickering per tick, with stronger wobble while boosted and shorter reuse cooldowns.
