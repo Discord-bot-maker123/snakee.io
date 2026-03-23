@@ -204,7 +204,7 @@ export class StartMenu {
     this.playButton = document.createElement("button");
     this.playButton.type = "button";
     this.playButton.className = "menu-play";
-    this.playButton.textContent = "Play";
+    this.playButton.textContent = "Find Match";
 
     this.playPage.appendChild(this.nicknameInput);
     this.playPage.appendChild(this.playButton);
@@ -407,6 +407,7 @@ export class StartMenu {
     this.landingPage.classList.add("hidden");
     this.loginPage.classList.add("hidden");
     this.playPage.classList.remove("hidden");
+    this.authStatus.textContent = "Set your nickname and click Find Match.";
     this.renderAuthState();
     this.renderStats();
   }
@@ -417,6 +418,8 @@ export class StartMenu {
     }
 
     this.launching = true;
+    this.playButton.textContent = "Finding match...";
+    this.playButton.disabled = true;
     const nickname = this.getNickname();
     localStorage.setItem("snakee.nickname", nickname);
 
@@ -438,6 +441,8 @@ export class StartMenu {
     });
     this.hide();
     this.launching = false;
+    this.playButton.textContent = "Find Match";
+    this.playButton.disabled = false;
   }
 
   private renderAuthState(): void {
@@ -454,7 +459,9 @@ export class StartMenu {
     this.guestButton.classList.toggle("hidden", this.authenticated);
     this.continueButton.classList.toggle("hidden", !this.authenticated);
     this.signOutButton.classList.toggle("hidden", !this.authenticated);
-    this.authStatus.textContent = this.authenticated ? "Signed in. Ready to play." : "Sign in / sign up, or continue as guest.";
+    this.authStatus.textContent = this.authenticated
+      ? "Signed in. Continue to Find Match."
+      : "Sign in / sign up, or continue as guest.";
   }
 
   private getNickname(): string {
