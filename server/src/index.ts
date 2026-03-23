@@ -15,23 +15,25 @@ import {
 import { World } from "./game/World.js";
 import { Broadcaster, type ClientSyncState } from "./net/Broadcaster.js";
 
-type UserData = {
-  id: string;
-  accessToken: string | null;
-  authUserId: string | null;
-};
-
 type ConnectedClient = {
   id: string;
   ws: WebSocket;
   sync: ClientSyncState;
   authUserId: string | null;
+  roomId: string;
+};
+
+type MatchRoom = {
+  id: string;
+  world: World;
+  clients: Map<string, ConnectedClient>;
 };
 
 const PORT = Number(process.env.PORT ?? 9001);
 const ALLOWED_ORIGIN = process.env.CORS_ORIGIN ?? "*";
-const world = new World();
-const clients = new Map<string, ConnectedClient>();
+const MAX_PLAYERS_PER_ROOM = Number(process.env.MATCH_MAX_PLAYERS ?? 24);
+
+const rooms = new Map<string, MatchRoom>();
 const clientsBySocket = new WeakMap<WebSocket, ConnectedClient>();
 const wsServer = new WebSocketServer({ noServer: true });
 
@@ -157,15 +159,15 @@ async function authenticateHttpRequest(req: IncomingMessage): Promise<{ userId: 
   return { userId: identity.userId };
 }
 
-function sendWelcome(client: ConnectedClient): void {
+function sendWelcome(client: ConnectedClient, room: MatchRoom): void {
   const welcome: WelcomeMsg = {
     type: "welcome",
     protocolVersion: NETWORK_PROTOCOL_VERSION,
     playerId: client.id,
     worldRadius: ARENA_RADIUS,
     serverTime: Date.now(),
-    snakes: world.getSnakesState(),
-    orbs: world.getOrbsState()
+    snakes: room.world.getSnakesState(),
+    orbs: room.world.getOrbsState()
   };
 
   client.ws.send(pack(welcome));
@@ -175,49 +177,133 @@ function sendDeath(client: ConnectedClient, death: DeathMsg): void {
   client.ws.send(pack(death));
 }
 
+function createRoom(): MatchRoom {
+  const roomId = `room-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const room: MatchRoom = {
+    id: roomId,
+    world: new World(),
+    clients: new Map<string, ConnectedClient>()
+  };
+
+  room.world.start(({ tick, deaths }) => {
+    if (room.clients.size === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const snakes = room.world.getSnakesState();
+    const orbs = room.world.getOrbsState();
+    const leaderboard = room.world.getLeaderboard();
+    const removedFromDeaths = deaths.map((death) => death.victimId);
+
+    for (const client of room.clients.values()) {
+      if (client.ws.readyState !== client.ws.OPEN) {
+        continue;
+      }
+
+      const payload = Broadcaster.buildTick(client.sync, tick, now, snakes, orbs, leaderboard, removedFromDeaths);
+      client.ws.send(pack(payload));
+    }
+
+    for (const death of deaths) {
+      const victim = room.clients.get(death.victimId);
+      if (!victim || victim.ws.readyState !== victim.ws.OPEN) {
+        continue;
+      }
+
+      if (isSupabaseConfigured() && victim.authUserId) {
+        void recordDeathForUser(victim.authUserId, death.finalScore, death.finalLength).catch(() => {
+          // Do not block real-time loop on persistence errors.
+        });
+      }
+
+      sendDeath(victim, {
+        type: "death",
+        victimId: death.victimId,
+        killerId: death.killerId,
+        killerName: death.killerName,
+        finalScore: death.finalScore,
+        finalLength: death.finalLength
+      });
+    }
+  });
+
+  rooms.set(roomId, room);
+  return room;
+}
+
+function pickRoomForMatchmaking(): MatchRoom {
+  let bestRoom: MatchRoom | null = null;
+  let bestSize = Number.POSITIVE_INFINITY;
+
+  for (const room of rooms.values()) {
+    const size = room.clients.size;
+    if (size >= MAX_PLAYERS_PER_ROOM) {
+      continue;
+    }
+    if (size < bestSize) {
+      bestSize = size;
+      bestRoom = room;
+    }
+  }
+
+  return bestRoom ?? createRoom();
+}
+
+function removeClientFromRoom(client: ConnectedClient): void {
+  const room = rooms.get(client.roomId);
+  if (!room) {
+    return;
+  }
+
+  room.clients.delete(client.id);
+  room.world.removeSnake(client.id, false);
+
+  if (room.clients.size === 0) {
+    room.world.stop();
+    rooms.delete(room.id);
+  }
+}
+
 function onWebSocketOpen(ws: WebSocket, req: IncomingMessage): void {
+  const room = pickRoomForMatchmaking();
   const playerId = `p-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const accessToken = parseAccessTokenFromRequestUrl(req);
 
-  const snake = world.addPlayer(playerId, randomPlayerName(), false);
+  const snake = room.world.addPlayer(playerId, randomPlayerName(), false);
   const client: ConnectedClient = {
     id: playerId,
     ws,
     sync: Broadcaster.createClientSyncState(),
-    authUserId: null
+    authUserId: null,
+    roomId: room.id
   };
 
-  const userData: UserData = {
-    id: playerId,
-    accessToken,
-    authUserId: null
-  };
-
-  clients.set(playerId, client);
+  room.clients.set(playerId, client);
   clientsBySocket.set(ws, client);
-  sendWelcome(client);
+  sendWelcome(client, room);
 
   void (async () => {
-    if (!isSupabaseConfigured() || !userData.accessToken) {
+    if (!isSupabaseConfigured() || !accessToken) {
       return;
     }
 
-    const identity = await verifyAccessToken(userData.accessToken);
+    const identity = await verifyAccessToken(accessToken);
     if (!identity) {
       return;
     }
 
     await ensureProfile(identity);
 
-    const activeClient = clients.get(playerId);
-    if (!activeClient) {
+    const activeRoom = rooms.get(room.id);
+    const activeClient = activeRoom?.clients.get(playerId);
+    if (!activeRoom || !activeClient) {
       return;
     }
 
-    userData.authUserId = identity.userId;
     activeClient.authUserId = identity.userId;
     if (snake.alive) {
-      world.setSnakeName(playerId, sanitizeName(identity.displayName));
+      activeRoom.world.setSnakeName(playerId, sanitizeName(identity.displayName));
     }
   })().catch(() => {
     // Authentication failures should not block gameplay.
@@ -229,17 +315,22 @@ function onWebSocketOpen(ws: WebSocket, req: IncomingMessage): void {
       return;
     }
 
+    const activeRoom = rooms.get(clientState.roomId);
+    if (!activeRoom) {
+      return;
+    }
+
     const clientMsg = parseClientMessage(message);
     if (!clientMsg) {
       return;
     }
 
     if (clientMsg.type === "join") {
-      world.setSnakeName(clientState.id, sanitizeName(clientMsg.name));
+      activeRoom.world.setSnakeName(clientState.id, sanitizeName(clientMsg.name));
       return;
     }
 
-    world.handleInput(clientState.id, clientMsg.angle, clientMsg.boosting, clientMsg.seq);
+    activeRoom.world.handleInput(clientState.id, clientMsg.angle, clientMsg.boosting, clientMsg.seq);
   });
 
   ws.on("close", () => {
@@ -247,8 +338,8 @@ function onWebSocketOpen(ws: WebSocket, req: IncomingMessage): void {
     if (!clientState) {
       return;
     }
-    clients.delete(clientState.id);
-    world.removeSnake(clientState.id, false);
+
+    removeClientFromRoom(clientState);
   });
 }
 
@@ -268,7 +359,14 @@ const server = createServer((req, res) => {
   }
 
   if (method === "GET" && pathname === "/api/health") {
-    sendJson(res, 200, { ok: true, supabaseConfigured: isSupabaseConfigured() });
+    const connectedClients = Array.from(rooms.values()).reduce((acc, room) => acc + room.clients.size, 0);
+    sendJson(res, 200, {
+      ok: true,
+      supabaseConfigured: isSupabaseConfigured(),
+      rooms: rooms.size,
+      connectedPlayers: connectedClients,
+      maxPlayersPerRoom: MAX_PLAYERS_PER_ROOM
+    });
     return;
   }
 
@@ -356,49 +454,7 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-world.start(({ tick, deaths }) => {
-  if (clients.size === 0) {
-    return;
-  }
-
-  const now = Date.now();
-  const snakes = world.getSnakesState();
-  const orbs = world.getOrbsState();
-  const leaderboard = world.getLeaderboard();
-  const removedFromDeaths = deaths.map((death) => death.victimId);
-
-  for (const client of clients.values()) {
-    if (client.ws.readyState !== client.ws.OPEN) {
-      continue;
-    }
-    const payload = Broadcaster.buildTick(client.sync, tick, now, snakes, orbs, leaderboard, removedFromDeaths);
-    client.ws.send(pack(payload));
-  }
-
-  for (const death of deaths) {
-    const victim = clients.get(death.victimId);
-    if (!victim || victim.ws.readyState !== victim.ws.OPEN) {
-      continue;
-    }
-
-    if (isSupabaseConfigured() && victim.authUserId) {
-      void recordDeathForUser(victim.authUserId, death.finalScore, death.finalLength).catch(() => {
-        // Do not block real-time loop on persistence errors.
-      });
-    }
-
-    sendDeath(victim, {
-      type: "death",
-      victimId: death.victimId,
-      killerId: death.killerId,
-      killerName: death.killerName,
-      finalScore: death.finalScore,
-      finalLength: death.finalLength
-    });
-  }
-});
-
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`snakee.io server running on ws://localhost:${PORT}`);
+  console.log(`snakee.io matchmaking server running on ws://localhost:${PORT}`);
 });
