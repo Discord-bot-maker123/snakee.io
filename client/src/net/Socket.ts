@@ -5,6 +5,8 @@ type TickHandler = (message: TickMsg) => void;
 type WelcomeHandler = (message: WelcomeMsg) => void;
 type DeathHandler = (message: DeathMsg) => void;
 
+const wsUrlFromEnv = import.meta.env.VITE_WS_URL as string | undefined;
+
 export class SocketClient {
   private ws: WebSocket | null;
 
@@ -28,9 +30,16 @@ export class SocketClient {
   }
 
   public connect(): void {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.port === "5173" ? `${window.location.hostname}:9001` : window.location.host;
-    const url = new URL(`${protocol}//${host}`);
+    const url = (() => {
+      if (wsUrlFromEnv && wsUrlFromEnv.length > 0) {
+        return new URL(wsUrlFromEnv);
+      }
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.port === "5173" ? `${window.location.hostname}:9001` : window.location.host;
+      return new URL(`${protocol}//${host}`);
+    })();
+
     if (this.accessToken) {
       url.searchParams.set("access_token", this.accessToken);
     }

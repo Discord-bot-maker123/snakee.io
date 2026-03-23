@@ -21,6 +21,7 @@ export type MeResponse = {
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const apiBaseUrlFromEnv = import.meta.env.VITE_API_BASE_URL as string | undefined;
 
 const hasConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -29,6 +30,11 @@ export const supabase = hasConfig
   : null;
 
 function apiUrl(path: string): string {
+  if (apiBaseUrlFromEnv && apiBaseUrlFromEnv.length > 0) {
+    const base = apiBaseUrlFromEnv.replace(/\/$/, "");
+    return `${base}${path}`;
+  }
+
   const protocol = window.location.protocol;
   const host = window.location.port === "5173" ? `${window.location.hostname}:9001` : window.location.host;
   return `${protocol}//${host}${path}`;
