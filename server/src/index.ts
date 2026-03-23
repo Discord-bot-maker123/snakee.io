@@ -27,7 +27,7 @@ type ConnectedClient = {
   authUserId: string | null;
 };
 
-const PORT = 9001;
+const PORT = Number(process.env.PORT ?? 9001);
 const world = new World();
 const clients = new Map<string, ConnectedClient>();
 
