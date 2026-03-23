@@ -255,7 +255,10 @@ function onWebSocketOpen(ws: WebSocket, req: IncomingMessage): void {
 const server = createServer((req, res) => {
   const method = req.method ?? "GET";
   const parsedUrl = new URL(req.url ?? "/", "http://localhost");
-  const pathname = parsedUrl.pathname;
+  const pathname =
+    parsedUrl.pathname.length > 1 && parsedUrl.pathname.endsWith("/")
+      ? parsedUrl.pathname.slice(0, -1)
+      : parsedUrl.pathname;
 
   if (method === "OPTIONS") {
     applyCors(res);
