@@ -101,7 +101,7 @@ app.ws<UserData>("/*", {
   close: (ws) => {
     const userData = ws.getUserData();
     clients.delete(userData.id);
-    world.removeSnake(userData.id);
+    world.removeSnake(userData.id, false);
   }
 });
 

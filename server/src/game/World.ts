@@ -67,12 +67,14 @@ export class World {
     return snake;
   }
 
-  public removeSnake(id: string): void {
+  public removeSnake(id: string, dropMass: boolean = false): void {
     const snake = this.snakes.get(id);
     if (!snake) {
       return;
     }
-    this.orbManager.spawnFromSegments(snake.getSegments());
+    if (dropMass) {
+      this.orbManager.spawnFromSegments(snake.getSegments());
+    }
     if (snake.isBot) {
       this.botAI.removeBot(snake.id);
     }

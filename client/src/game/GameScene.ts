@@ -3,9 +3,7 @@ import {
   ARENA_BORDER_COLOR,
   ARENA_RADIUS,
   BACKGROUND_COLOR,
-  SERVER_TICK_RATE,
-  SNAKE_BASE_SPEED,
-  BOOST_MULTIPLIER
+  SERVER_TICK_RATE
 } from "snakee-shared/constants";
 import type {
   LeaderboardEntry,
@@ -219,15 +217,14 @@ export class GameScene {
 
     const player = this.playerId ? this.current.snakes.get(this.playerId) : undefined;
     const playerHead: Vec2 = player?.segments[0] ?? { x: 0, y: 0 };
-    const speedRatio = this.inputHandler?.isBoosting() ? BOOST_MULTIPLIER / SNAKE_BASE_SPEED : 0;
+    const speedRatio = this.inputHandler?.isBoosting() ? 1 : 0;
 
     this.camera.update(playerHead, speedRatio);
 
     // Update input handler with player's screen position
     if (this.inputHandler && player) {
-      const screenX = this.app.renderer.width * 0.5 + (playerHead.x - this.camera["position"].x) * this.camera["zoom"];
-      const screenY = this.app.renderer.height * 0.5 + (playerHead.y - this.camera["position"].y) * this.camera["zoom"];
-      this.inputHandler.setPlayerScreenPos(screenX, screenY);
+      const screenPosition = this.camera.worldToScreen(playerHead);
+      this.inputHandler.setPlayerScreenPos(screenPosition.x, screenPosition.y);
     }
 
     this.arenaGlow.alpha = 0.14 + (Math.sin(this.ambienceTime * 1.7) + 1) * 0.09;

@@ -38,4 +38,11 @@ export class Camera {
       this.renderer.height * 0.5 - this.position.y * this.zoom
     );
   }
+
+  public worldToScreen(point: Vec2): Vec2 {
+    return {
+      x: this.renderer.width * 0.5 + (point.x - this.position.x) * this.zoom,
+      y: this.renderer.height * 0.5 + (point.y - this.position.y) * this.zoom
+    };
+  }
 }
