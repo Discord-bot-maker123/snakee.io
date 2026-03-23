@@ -1,18 +1,30 @@
 import { pack, unpack } from "msgpackr";
 import { ARENA_RADIUS, NETWORK_PROTOCOL_VERSION } from "snakee-shared/constants";
 import type { ClientMsg, WelcomeMsg } from "snakee-shared/types";
-import uWS, { type WebSocket } from "uWebSockets.js";
+import uWS, { type HttpRequest, type HttpResponse, type WebSocket } from "uWebSockets.js";
+import {
+  ensureProfile,
+  getAllTimeLeaderboard,
+  getProfileWithStats,
+  isSupabaseConfigured,
+  recordDeathForUser,
+  updateDisplayName,
+  verifyAccessToken
+} from "./auth/supabase.js";
 import { World } from "./game/World.js";
 import { Broadcaster, type ClientSyncState } from "./net/Broadcaster.js";
 
 type UserData = {
   id: string;
+  accessToken: string | null;
+  authUserId: string | null;
 };
 
 type ConnectedClient = {
   id: string;
   ws: WebSocket<UserData>;
   sync: ClientSyncState;
+  authUserId: string | null;
 };
 
 const PORT = 9001;
@@ -49,6 +61,83 @@ function parseClientMessage(raw: ArrayBuffer): ClientMsg | null {
   }
 }
 
+function parseQueryToken(query: string | null | undefined): string | null {
+  if (!query || query.length === 0) {
+    return null;
+  }
+
+  const params = new URLSearchParams(query);
+  const token = params.get("access_token");
+  return token && token.length > 0 ? token : null;
+}
+
+function extractBearerToken(req: HttpRequest): string | null {
+  const header = req.getHeader("authorization");
+  if (header.length > 7 && header.toLowerCase().startsWith("bearer ")) {
+    return header.slice(7).trim();
+  }
+  return null;
+}
+
+function sendJson(res: HttpResponse, status: number, payload: unknown): void {
+  const statusLine = `${status} ${status >= 200 && status < 300 ? "OK" : "Error"}`;
+  res.writeStatus(statusLine);
+  res.writeHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(payload));
+}
+
+function sendError(res: HttpResponse, status: number, message: string): void {
+  sendJson(res, status, { error: message });
+}
+
+function readJsonBody(res: HttpResponse): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let aborted = false;
+
+    res.onAborted(() => {
+      aborted = true;
+      reject(new Error("Request aborted"));
+    });
+
+    res.onData((arrayBuffer, isLast) => {
+      if (aborted) {
+        return;
+      }
+
+      chunks.push(Buffer.from(arrayBuffer));
+      if (!isLast) {
+        return;
+      }
+
+      try {
+        const raw = Buffer.concat(chunks).toString("utf-8");
+        if (raw.length === 0) {
+          resolve({});
+          return;
+        }
+        resolve(JSON.parse(raw) as unknown);
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+  });
+}
+
+async function authenticateHttpRequest(req: HttpRequest): Promise<{ userId: string } | null> {
+  const token = extractBearerToken(req);
+  if (!token) {
+    return null;
+  }
+
+  const identity = await verifyAccessToken(token);
+  if (!identity) {
+    return null;
+  }
+
+  return { userId: identity.userId };
+}
+
 function sendWelcome(client: ConnectedClient): void {
   const welcome: WelcomeMsg = {
     type: "welcome",
@@ -65,7 +154,97 @@ function sendWelcome(client: ConnectedClient): void {
 
 const app = uWS.App();
 
+app.get("/api/health", (res) => {
+  sendJson(res, 200, { ok: true, supabaseConfigured: isSupabaseConfigured() });
+});
+
+app.get("/api/me", (res, req) => {
+  void (async () => {
+    if (!isSupabaseConfigured()) {
+      sendError(res, 503, "Supabase is not configured.");
+      return;
+    }
+
+    const auth = await authenticateHttpRequest(req);
+    if (!auth) {
+      sendError(res, 401, "Unauthorized");
+      return;
+    }
+
+    const me = await getProfileWithStats(auth.userId);
+    if (!me) {
+      sendError(res, 404, "Profile not found");
+      return;
+    }
+
+    sendJson(res, 200, me);
+  })().catch(() => {
+    sendError(res, 500, "Failed to read profile.");
+  });
+});
+
+app.patch("/api/me", (res, req) => {
+  void (async () => {
+    if (!isSupabaseConfigured()) {
+      sendError(res, 503, "Supabase is not configured.");
+      return;
+    }
+
+    const auth = await authenticateHttpRequest(req);
+    if (!auth) {
+      sendError(res, 401, "Unauthorized");
+      return;
+    }
+
+    const body = (await readJsonBody(res)) as { displayName?: unknown };
+    const displayName = typeof body.displayName === "string" ? body.displayName : "";
+    if (displayName.trim().length === 0) {
+      sendError(res, 400, "displayName is required");
+      return;
+    }
+
+    const updated = await updateDisplayName(auth.userId, displayName);
+    if (!updated) {
+      sendError(res, 500, "Failed to update display name.");
+      return;
+    }
+
+    sendJson(res, 200, updated);
+  })().catch((error) => {
+    const message = error instanceof Error ? error.message : "Failed to update profile.";
+    sendError(res, 500, message);
+  });
+});
+
+app.get("/api/leaderboard/all-time", (res) => {
+  void (async () => {
+    if (!isSupabaseConfigured()) {
+      sendError(res, 503, "Supabase is not configured.");
+      return;
+    }
+
+    const leaderboard = await getAllTimeLeaderboard(20);
+    sendJson(res, 200, { entries: leaderboard });
+  })().catch(() => {
+    sendError(res, 500, "Failed to read leaderboard.");
+  });
+});
+
 app.ws<UserData>("/*", {
+  upgrade: (res, req, context) => {
+    const accessToken = parseQueryToken(req.getQuery?.());
+    res.upgrade<UserData>(
+      {
+        id: "",
+        accessToken,
+        authUserId: null
+      },
+      req.getHeader("sec-websocket-key"),
+      req.getHeader("sec-websocket-protocol"),
+      req.getHeader("sec-websocket-extensions"),
+      context
+    );
+  },
   idleTimeout: 32,
   maxPayloadLength: 1024,
   open: (ws) => {
@@ -73,16 +252,43 @@ app.ws<UserData>("/*", {
     const userData = ws.getUserData();
     userData.id = playerId;
 
-    world.addPlayer(playerId, randomPlayerName(), false);
+    const snake = world.addPlayer(playerId, randomPlayerName(), false);
 
     const client: ConnectedClient = {
       id: playerId,
       ws,
-      sync: Broadcaster.createClientSyncState()
+      sync: Broadcaster.createClientSyncState(),
+      authUserId: null
     };
     clients.set(playerId, client);
 
     sendWelcome(client);
+
+    void (async () => {
+      if (!isSupabaseConfigured() || !userData.accessToken) {
+        return;
+      }
+
+      const identity = await verifyAccessToken(userData.accessToken);
+      if (!identity) {
+        return;
+      }
+
+      await ensureProfile(identity);
+
+      const activeClient = clients.get(playerId);
+      if (!activeClient) {
+        return;
+      }
+
+      userData.authUserId = identity.userId;
+      activeClient.authUserId = identity.userId;
+      if (snake.alive) {
+        world.setSnakeName(playerId, sanitizeName(identity.displayName));
+      }
+    })().catch(() => {
+      // Authentication failures should not block guest gameplay.
+    });
   },
   message: (ws, message) => {
     const clientMsg = parseClientMessage(message);
@@ -124,6 +330,12 @@ world.start(({ tick, deaths }) => {
   for (const death of deaths) {
     const victim = clients.get(death.victimId);
     if (victim) {
+      if (isSupabaseConfigured() && victim.authUserId) {
+        void recordDeathForUser(victim.authUserId, death.finalScore, death.finalLength).catch(() => {
+          // Do not block real-time loop on persistence errors.
+        });
+      }
+
       victim.ws.send(
         pack({
           type: "death",

@@ -5,3 +5,4 @@ client/dist/
 server/dist/
 .npm-cache/
 .env
+.env.local

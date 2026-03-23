@@ -16,20 +16,26 @@ export class SocketClient {
 
   private pendingName: string | null;
 
+  private accessToken: string | null;
+
   public constructor() {
     this.ws = null;
     this.onTickHandler = null;
     this.onWelcomeHandler = null;
     this.onDeathHandler = null;
     this.pendingName = null;
+    this.accessToken = null;
   }
 
   public connect(): void {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.port === "5173" ? `${window.location.hostname}:9001` : window.location.host;
-    const url = `${protocol}//${host}`;
+    const url = new URL(`${protocol}//${host}`);
+    if (this.accessToken) {
+      url.searchParams.set("access_token", this.accessToken);
+    }
 
-    this.ws = new WebSocket(url);
+    this.ws = new WebSocket(url.toString());
     this.ws.binaryType = "arraybuffer";
     this.ws.onopen = (): void => {
       if (this.pendingName) {
@@ -64,6 +70,10 @@ export class SocketClient {
   public setDisplayName(name: string): void {
     this.pendingName = name;
     this.sendJoin(name);
+  }
+
+  public setAccessToken(accessToken: string | null): void {
+    this.accessToken = accessToken;
   }
 
   public sendInput(payload: InputMsg): void {

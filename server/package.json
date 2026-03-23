@@ -8,13 +8,13 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "uWebSockets.js": "uNetworking/uWebSockets.js#v20.56.0",
-    "msgpackr": "^1.11.2"
+    "@supabase/supabase-js": "^2.100.0",
+    "msgpackr": "^1.11.2",
+    "uWebSockets.js": "uNetworking/uWebSockets.js#v20.56.0"
   },
   "devDependencies": {
     "@types/node": "^24.6.1",
-    "typescript": "^5.6.3",
-    "tsx": "^4.7.1"
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.3"
   }
 }
-

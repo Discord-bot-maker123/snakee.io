@@ -21,7 +21,7 @@ import { BackgroundMusic } from "./BackgroundMusic";
 import { SocketClient } from "../net/Socket";
 import { HUD } from "../ui/HUD";
 import { DeathScreen } from "../ui/DeathScreen";
-import { StartMenu } from "../ui/StartMenu";
+import { StartMenu, type StartSessionConfig } from "../ui/StartMenu";
 
 type SnapshotState = {
   snakes: Map<string, SnakeState>;
@@ -109,8 +109,8 @@ export class GameScene {
     this.hud = null;
     this.deathScreen = null;
     this.backgroundMusic = new BackgroundMusic();
-    this.startMenu = new StartMenu(root, (nickname: string) => {
-      this.startSession(root, nickname);
+    this.startMenu = new StartMenu(root, (config: StartSessionConfig) => {
+      this.startSession(root, config);
     });
     this.sessionStarted = false;
 
@@ -125,7 +125,7 @@ export class GameScene {
     });
   }
 
-  private startSession(root: HTMLElement, nickname: string): void {
+  private startSession(root: HTMLElement, config: StartSessionConfig): void {
     if (this.sessionStarted) {
       return;
     }
@@ -133,6 +133,7 @@ export class GameScene {
     void this.backgroundMusic.ensureRunning();
 
     const socket = new SocketClient();
+    socket.setAccessToken(config.accessToken);
     this.socket = socket;
     this.inputHandler = new InputHandler(root, socket);
     this.hud = new HUD(root);
@@ -141,7 +142,7 @@ export class GameScene {
     });
     this.wireSocket();
     socket.connect();
-    socket.setDisplayName(nickname);
+    socket.setDisplayName(config.nickname);
   }
 
   private wireSocket(): void {
@@ -331,10 +332,10 @@ export class GameScene {
     /* changed by gemini */
     const graphics = new PIXI.Graphics();
     // Subtle dark border
-    graphics.lineStyle({ width: 12, color: 0x1c2833, alpha: 0.9 });
+    graphics.lineStyle(12, 0x1c2833, 0.9);
     graphics.drawCircle(0, 0, ARENA_RADIUS);
     // Inner glow-like line
-    graphics.lineStyle({ width: 2, color: 0x2e4053, alpha: 0.4 });
+    graphics.lineStyle(2, 0x2e4053, 0.4);
     graphics.drawCircle(0, 0, ARENA_RADIUS - 6);
     return graphics;
   }
@@ -343,7 +344,7 @@ export class GameScene {
     /* changed by gemini */
     const graphics = new PIXI.Graphics();
     // Soft outer fade
-    graphics.lineStyle({ width: 30, color: 0x000000, alpha: 0.5 });
+    graphics.lineStyle(30, 0x000000, 0.5);
     graphics.drawCircle(0, 0, ARENA_RADIUS + 15);
     return graphics;
   }

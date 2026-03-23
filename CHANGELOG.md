@@ -2,6 +2,11 @@
 
 ## 2026-03-23
 
+- Added Supabase-based account integration with optional Google sign-in and guest mode fallback in the start menu.
+- Added server-side token verification for websocket sessions (via query token), with authenticated players mapped to persistent profile identities.
+- Added authenticated HTTP endpoints for profile/stats (`GET /api/me`, `PATCH /api/me`) and all-time leaderboard (`GET /api/leaderboard/all-time`).
+- Added persistent cloud stats updates on authenticated player death (games played, total score, best score/length, last played).
+- Added initial Supabase SQL bootstrap script (`scripts/supabase_schema.sql`) covering `profiles`, `player_stats`, trigger, and RLS policies.
 - Fixed bot steering loops that caused orbit-lock behavior by introducing stateful bot modes (`seek_orb`, `wander`, `recover`) and stuck recovery in server bot AI.
 - Added opt-in runtime bot diagnostics behind `BOT_DEBUG_LOGS=1` for mode changes, stuck detection, and target resets.
 - Updated `Rules.md` with explicit anti-circling bot requirements, stateful steering guidance, and project-log maintenance policy.
