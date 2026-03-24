@@ -1,9 +1,7 @@
 import * as PIXI from "pixi.js";
 import {
-  ARENA_BORDER_COLOR,
   ARENA_RADIUS,
-  BACKGROUND_COLOR,
-  SERVER_TICK_RATE
+  BACKGROUND_COLOR
 } from "snakee-shared/constants";
 import type {
   LeaderboardEntry,
@@ -30,7 +28,7 @@ type SnapshotState = {
   time: number;
 };
 
-const TICK_INTERVAL_MS = 1000 / SERVER_TICK_RATE;
+const INTERPOLATION_DELAY_MS = 100;
 
 export class GameScene {
   private readonly app: PIXI.Application;
@@ -69,7 +67,11 @@ export class GameScene {
 
   private current: SnapshotState;
 
-  private localTickTime: number;
+  private readonly snapshotHistory: SnapshotState[];
+
+  private pendingTick: TickMsg | null;
+
+  private lastAppliedTick: number;
 
   private ambienceTime: number;
 
@@ -117,7 +119,9 @@ export class GameScene {
     this.playerId = null;
     this.previous = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
     this.current = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
-    this.localTickTime = performance.now();
+    this.snapshotHistory = [];
+    this.pendingTick = null;
+    this.lastAppliedTick = -1;
     this.ambienceTime = 0;
 
     this.app.ticker.add((ticker: PIXI.Ticker) => {
@@ -159,14 +163,20 @@ export class GameScene {
         time: message.serverTime
       };
       this.previous = this.cloneState(this.current);
-      this.localTickTime = performance.now();
+      this.snapshotHistory.length = 0;
+      this.pushSnapshot(this.current);
+      this.pendingTick = null;
+      this.lastAppliedTick = -1;
+      this.updateHud();
       if (this.deathScreen) {
         this.deathScreen.hide();
       }
     });
 
     this.socket.onTick((message: TickMsg) => {
-      this.applyTick(message);
+      if (!this.pendingTick || message.tick > this.pendingTick.tick) {
+        this.pendingTick = message;
+      }
     });
 
     this.socket.onDeath((message) => {
@@ -178,6 +188,10 @@ export class GameScene {
   }
 
   private applyTick(message: TickMsg): void {
+    if (message.tick <= this.lastAppliedTick) {
+      return;
+    }
+
     this.previous = this.cloneState(this.current);
 
     for (const removedId of message.removedSnakeIds) {
@@ -197,42 +211,47 @@ export class GameScene {
 
     this.current.leaderboard = message.leaderboard;
     this.current.time = message.serverTime;
-    this.localTickTime = performance.now();
+    this.pushSnapshot(this.current);
+    this.lastAppliedTick = message.tick;
+    this.updateHud();
   }
 
   private render(deltaMs: number): void {
+    if (this.pendingTick) {
+      const tickToApply = this.pendingTick;
+      this.pendingTick = null;
+      this.applyTick(tickToApply);
+    }
+
     this.ambienceTime += deltaMs * 0.001;
-    const now = performance.now();
-    const alpha = Math.min(1, Math.max(0, (now - this.localTickTime) / TICK_INTERVAL_MS));
+    const targetServerTime = Date.now() - INTERPOLATION_DELAY_MS;
+    const { from, to, alpha } = this.pickRenderSnapshots(targetServerTime);
 
     const renderedSnakes: SnakeState[] = [];
-    for (const [id, snake] of this.current.snakes.entries()) {
-      const prev = this.previous.snakes.get(id) ?? snake;
+    for (const [id, snake] of to.snakes.entries()) {
+      const prev = from.snakes.get(id) ?? snake;
       renderedSnakes.push(this.interpolateSnake(prev, snake, alpha));
     }
 
-    const renderedOrbs: OrbState[] = Array.from(this.current.orbs.values());
+    const renderedOrbs: OrbState[] = Array.from(to.orbs.values());
 
     this.snakeRenderer.render(renderedSnakes);
     this.orbRenderer.render(renderedOrbs, deltaMs);
 
+    const renderedPlayer = this.playerId ? renderedSnakes.find((snake: SnakeState) => snake.id === this.playerId) : undefined;
     const player = this.playerId ? this.current.snakes.get(this.playerId) : undefined;
-    const playerHead: Vec2 = player?.segments[0] ?? { x: 0, y: 0 };
+    const playerHead: Vec2 = renderedPlayer?.segments[0] ?? player?.segments[0] ?? { x: 0, y: 0 };
     const speedRatio = this.inputHandler?.isBoosting() ? 1 : 0;
 
     this.camera.update(playerHead, speedRatio);
 
     // Update input handler with player's screen position
-    if (this.inputHandler && player) {
+    if (this.inputHandler && renderedPlayer) {
       const screenPosition = this.camera.worldToScreen(playerHead);
       this.inputHandler.setPlayerScreenPos(screenPosition.x, screenPosition.y);
     }
 
     this.arenaGlow.alpha = 0.14 + (Math.sin(this.ambienceTime * 1.7) + 1) * 0.09;
-    if (this.hud) {
-      this.hud.updateScore(player);
-      this.hud.updateLeaderboard(this.current.leaderboard);
-    }
   }
 
   private interpolateSnake(previous: SnakeState, current: SnakeState, alpha: number): SnakeState {
@@ -273,6 +292,58 @@ export class GameScene {
       leaderboard: state.leaderboard.map((entry: LeaderboardEntry) => ({ ...entry })),
       time: state.time
     };
+  }
+
+  private pushSnapshot(state: SnapshotState): void {
+    const snapshot = this.cloneState(state);
+    const last = this.snapshotHistory[this.snapshotHistory.length - 1];
+    if (last && snapshot.time <= last.time) {
+      this.snapshotHistory[this.snapshotHistory.length - 1] = snapshot;
+    } else {
+      this.snapshotHistory.push(snapshot);
+    }
+
+    while (this.snapshotHistory.length > 64) {
+      this.snapshotHistory.shift();
+    }
+  }
+
+  private pickRenderSnapshots(targetServerTime: number): { from: SnapshotState; to: SnapshotState; alpha: number } {
+    if (this.snapshotHistory.length === 0) {
+      return { from: this.previous, to: this.current, alpha: 1 };
+    }
+
+    if (this.snapshotHistory.length === 1) {
+      const single = this.snapshotHistory[0];
+      return { from: single, to: single, alpha: 1 };
+    }
+
+    const first = this.snapshotHistory[0];
+    if (targetServerTime <= first.time) {
+      return { from: first, to: first, alpha: 1 };
+    }
+
+    for (let i = 1; i < this.snapshotHistory.length; i += 1) {
+      const to = this.snapshotHistory[i];
+      if (targetServerTime <= to.time) {
+        const from = this.snapshotHistory[i - 1];
+        const span = Math.max(1, to.time - from.time);
+        const alpha = Math.min(1, Math.max(0, (targetServerTime - from.time) / span));
+        return { from, to, alpha };
+      }
+    }
+
+    const latest = this.snapshotHistory[this.snapshotHistory.length - 1];
+    return { from: latest, to: latest, alpha: 1 };
+  }
+
+  private updateHud(): void {
+    if (!this.hud) {
+      return;
+    }
+    const player = this.playerId ? this.current.snakes.get(this.playerId) : undefined;
+    this.hud.updateScore(player);
+    this.hud.updateLeaderboard(this.current.leaderboard);
   }
 
   private createBackgroundLayer(): PIXI.Graphics {

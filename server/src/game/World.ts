@@ -34,6 +34,8 @@ export class World {
 
   private timer: NodeJS.Timeout | null;
 
+  private lastStepTimeMs: number;
+
   private readonly boostDropTimers: Map<string, number>;
 
   public constructor() {
@@ -42,13 +44,22 @@ export class World {
     this.botAI = new BotAI();
     this.tickNumber = 0;
     this.timer = null;
+    this.lastStepTimeMs = 0;
     this.boostDropTimers = new Map<string, number>();
   }
 
   public start(onTick: (result: TickResult) => void): void {
+    if (this.timer) {
+      return;
+    }
+
     const deltaMs = 1000 / SERVER_TICK_RATE;
+    this.lastStepTimeMs = performance.now();
     this.timer = setInterval(() => {
-      const result = this.step(deltaMs / 1000);
+      const now = performance.now();
+      const elapsedSeconds = Math.min(0.25, Math.max(0, (now - this.lastStepTimeMs) / 1000));
+      this.lastStepTimeMs = now;
+      const result = this.step(elapsedSeconds);
       onTick(result);
     }, deltaMs);
   }
