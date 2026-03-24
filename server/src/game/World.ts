@@ -67,11 +67,16 @@ export class World {
       accumulatorMs += elapsedMs;
 
       let steps = 0;
+      let latestResult: TickResult | null = null;
       while (accumulatorMs >= tickMs && steps < MAX_CATCH_UP_STEPS) {
-        const result = this.step(fixedStepSeconds);
-        onTick(result);
+        latestResult = this.step(fixedStepSeconds);
         accumulatorMs -= tickMs;
         steps += 1;
+      }
+
+      if (latestResult) {
+        // Emit one tick packet per timer cycle to avoid burst delivery jitter.
+        onTick(latestResult);
       }
 
       if (steps === MAX_CATCH_UP_STEPS && accumulatorMs > tickMs) {

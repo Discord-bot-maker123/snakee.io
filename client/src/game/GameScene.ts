@@ -26,11 +26,11 @@ type SnapshotState = {
   orbs: Map<string, OrbState>;
   leaderboard: LeaderboardEntry[];
   time: number;
-  receivedAtMs: number;
 };
 
 const INTERPOLATION_DELAY_MS = 100;
 const MAX_PENDING_TICKS = 120;
+const MAX_TICKS_APPLIED_PER_FRAME = 3;
 
 export class GameScene {
   private readonly app: PIXI.Application;
@@ -119,8 +119,8 @@ export class GameScene {
     this.sessionStarted = false;
 
     this.playerId = null;
-    this.previous = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0, receivedAtMs: 0 };
-    this.current = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0, receivedAtMs: 0 };
+    this.previous = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
+    this.current = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
     this.snapshotHistory = [];
     this.pendingTicks = [];
     this.lastAppliedTick = -1;
@@ -218,36 +218,30 @@ export class GameScene {
     }
 
     this.current.leaderboard = message.leaderboard;
-    this.current.time = message.serverTime;
+    this.current.time = Math.max(message.serverTime, this.current.time + 1);
     this.pushSnapshot(this.current);
     this.lastAppliedTick = message.tick;
     this.updateHud();
   }
 
   private render(deltaMs: number): void {
-    // Process pending ticks to keep current/previous state relatively up to date for fallback
-    // But we primarily use snapshotHistory for the buffered render
-    while (this.pendingTicks.length > 0) {
-      const tickToApply = this.pendingTicks.shift();
-      if (tickToApply) {
+    if (this.pendingTicks.length > 0) {
+      const steps = Math.min(
+        MAX_TICKS_APPLIED_PER_FRAME,
+        Math.max(1, this.pendingTicks.length - 1)
+      );
+      for (let i = 0; i < steps; i += 1) {
+        const tickToApply = this.pendingTicks.shift();
+        if (!tickToApply) {
+          break;
+        }
         this.applyTick(tickToApply);
       }
     }
 
     this.ambienceTime += deltaMs * 0.001;
-    
-    // THE FIX: Use a stable render clock that stays INTERPOLATION_DELAY_MS behind real-time
-    // We use the last received server time as a reference point for the "now" on server
-    const latestSnapshot = this.snapshotHistory[this.snapshotHistory.length - 1];
-    if (!latestSnapshot) return;
-
-    // Estimate the current server time based on the last packet received
-    // and the time elapsed since that packet arrived.
-    const timeSinceLastPacket = Date.now() - latestSnapshot["receivedAtMs"];
-    const estimatedServerTime = latestSnapshot.time + timeSinceLastPacket;
-    const targetRenderTime = estimatedServerTime - INTERPOLATION_DELAY_MS;
-
-    const { from, to, alpha } = this.pickRenderSnapshots(targetRenderTime);
+    const targetServerTime = Date.now() - INTERPOLATION_DELAY_MS;
+    const { from, to, alpha } = this.pickRenderSnapshots(targetServerTime);
 
     const renderedSnakes: SnakeState[] = [];
     for (const [id, snake] of to.snakes.entries()) {
@@ -260,7 +254,7 @@ export class GameScene {
     this.snakeRenderer.render(renderedSnakes);
     this.orbRenderer.render(renderedOrbs, deltaMs);
 
-    const renderedPlayer = this.playerId ? renderedSnakes.find((s: SnakeState) => s.id === this.playerId) : undefined;
+    const renderedPlayer = this.playerId ? renderedSnakes.find((snake: SnakeState) => snake.id === this.playerId) : undefined;
     const playerHead: Vec2 = renderedPlayer?.segments[0] ?? { x: 0, y: 0 };
     const speedRatio = this.inputHandler?.isBoosting() ? 1 : 0;
 
@@ -276,14 +270,11 @@ export class GameScene {
   }
 
   private interpolateSnake(previous: SnakeState, current: SnakeState, alpha: number): SnakeState {
-    // FIX: Use Math.max to ensure segments don't "flicker" out during growth
-    const segmentCount = Math.max(previous.segments.length, current.segments.length);
+    const segmentCount = Math.min(previous.segments.length, current.segments.length);
     const segments = new Array(segmentCount);
-    
     for (let i = 0; i < segmentCount; i += 1) {
-      const a = previous.segments[i] ?? previous.segments[previous.segments.length - 1];
-      const b = current.segments[i] ?? current.segments[current.segments.length - 1];
-      
+      const a = previous.segments[i];
+      const b = current.segments[i];
       segments[i] = {
         x: a.x + (b.x - a.x) * alpha,
         y: a.y + (b.y - a.y) * alpha
@@ -314,14 +305,12 @@ export class GameScene {
       snakes,
       orbs,
       leaderboard: state.leaderboard.map((entry: LeaderboardEntry) => ({ ...entry })),
-      time: state.time,
-      receivedAtMs: state.receivedAtMs
+      time: state.time
     };
   }
 
   private pushSnapshot(state: SnapshotState): void {
     const snapshot = this.cloneState(state);
-    snapshot.receivedAtMs = Date.now();
     const last = this.snapshotHistory[this.snapshotHistory.length - 1];
     if (last && snapshot.time <= last.time) {
       this.snapshotHistory[this.snapshotHistory.length - 1] = snapshot;
