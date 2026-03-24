@@ -141,6 +141,11 @@ export class Snake {
     return this.segments.length;
   }
 
+  public canStartBoost(): boolean {
+    const minBoostSegments = this.isBot ? BOT_BOOST_START_MIN_SEGMENTS : BOOST_START_MIN_SEGMENTS;
+    return this.energy > 0 && this.segments.length >= minBoostSegments;
+  }
+
   public shedTailSegment(): Vec2 | null {
     if (this.segments.length <= 0) {
       return null;

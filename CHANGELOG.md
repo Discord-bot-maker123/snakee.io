@@ -5,6 +5,9 @@
 - Refreshed project logs with a current-state documentation pass to reduce drift between implementation and notes.
 - Added `docs/PROJECT_DOCUMENTATION.md` with an end-to-end architecture reference covering monorepo layout, runtime flow, game loop, networking protocol, auth/stats integration, and deployment/build workflow.
 - Recorded current operational notes in docs, including known architecture deltas to track (for example: `ws` currently used on server transport while `Rules.md` still states `uWebSockets.js`).
+- Fixed bot mass-awareness wiring for non-collision mass drops by registering bot mass clusters whenever `World.removeSnake(..., dropMass=true)` emits segment mass.
+- Removed post-safety random boost wobble from bot steering, so final movement headings stay aligned with hazard-validated safe angles.
+- Added explicit bot boost energy awareness (`Snake.canStartBoost()`), and gated all bot boost triggers/holds on actual available energy + segment eligibility.
 
 ## 2026-03-23
 

@@ -43,7 +43,6 @@ type BotBrain = {
   escapeLoopDirection: 1 | -1;
   massQueue: string[];
   steeringNoisePhase: number;
-  boostNoisePhase: number;
   boostHoldUntilMs: number;
 };
 
@@ -93,7 +92,6 @@ const ANCHOR_STAY_RADIUS = 580;
 const ANCHOR_FOLLOW_CHANCE = 0.28;
 const THREAT_ALERT_RADIUS = 1100; // Increased from 760
 const THREAT_PANIC_RADIUS = 450; // Increased from 280
-const THREAT_CLOSE_BOOST_RADIUS = 400; // Increased from 230
 const PREY_CHASE_RADIUS = 900; // Increased from 700
 const PROXIMITY_ESCAPE_RADIUS = 500; // Increased from 340
 const THREAT_HOLD_MS = 1700;
@@ -160,12 +158,12 @@ export class BotAI {
     const nearBoundary = distanceFromCenter > ARENA_RADIUS * 0.84;
     const criticalBoundary = distanceFromCenter > ARENA_RADIUS * 0.9;
     const movedDistance = this.distance(head, brain.lastHead);
+    const canBoostNow = bot.canStartBoost();
 
     brain.boostCooldownMs = Math.max(0, brain.boostCooldownMs - deltaSeconds * 1000);
     brain.stuckSeconds = movedDistance < 2 ? brain.stuckSeconds + deltaSeconds : Math.max(0, brain.stuckSeconds - deltaSeconds * 0.5);
-    const boostHoldActive = now < brain.boostHoldUntilMs;
+    const boostHoldActive = now < brain.boostHoldUntilMs && canBoostNow;
     brain.steeringNoisePhase += deltaSeconds * (1.4 + Math.random() * 0.35);
-    brain.boostNoisePhase += deltaSeconds * (boostHoldActive ? 14.5 + Math.random() * 3.5 : 7.5 + Math.random() * 2.5);
     brain.trappedSeconds = brain.mode === "trapped_survival" ? brain.trappedSeconds + deltaSeconds : Math.max(0, brain.trappedSeconds - deltaSeconds);
     const immediateThreat = this.findImmediateThreat(head, context.nearbySnakes, myLength);
 
@@ -242,12 +240,12 @@ export class BotAI {
         if (brain.mode === "trapped_survival" && brain.trappedSeconds > 5) {
           const breakoutAngle = this.buildRecoverAngle(head, brain.committedAngle);
           this.enterMode(bot.id, brain, "recover", breakoutAngle, now, 900 + Math.random() * 400, "trapped breakout", head);
-          const breakoutBoost = brain.boostCooldownMs <= 0 || Math.random() < 0.45;
+          const breakoutBoost = canBoostNow && (brain.boostCooldownMs <= 0 || Math.random() < 0.45);
           if (breakoutBoost) {
             brain.boostCooldownMs = 280 + Math.random() * 260;
             brain.boostHoldUntilMs = now + BOOST_HOLD_MS;
           }
-          bot.setBotTarget(this.applyBoostWobble(breakoutAngle, brain.boostNoisePhase, breakoutBoost), breakoutBoost);
+          bot.setBotTarget(breakoutAngle, breakoutBoost);
           brain.lastHead = head;
           return;
         }
@@ -281,6 +279,7 @@ export class BotAI {
         const shouldBoostForEscape =
           brain.mode === "evade_threat" &&
           !!threatNow &&
+          canBoostNow &&
           (brain.boostCooldownMs <= 0 || Math.random() < BOOST_EVASION_TRIGGER_CHANCE) &&
           threatNow.distance < EVASION_BOOST_MIN_DISTANCE &&
           threatNow.closingStrength > -0.75 &&
@@ -298,7 +297,7 @@ export class BotAI {
         }
 
         const activeEscapeBoost = shouldBoostForEscape || boostHoldActive;
-        bot.setBotTarget(this.applyBoostWobble(brain.committedAngle, brain.boostNoisePhase, activeEscapeBoost), activeEscapeBoost);
+        bot.setBotTarget(brain.committedAngle, activeEscapeBoost);
         brain.lastHead = head;
         return;
       }
@@ -306,12 +305,12 @@ export class BotAI {
 
     if (brain.mode === "evade_threat" && now < brain.threatHoldUntilMs) {
       const loopAngle = this.stretchEscapeAngle(brain.committedAngle, brain.escapeLoopDirection, brain.stuckSeconds, Number.POSITIVE_INFINITY);
-      const loopBoost = brain.boostCooldownMs <= 0 && Math.random() < BOOST_EVASION_TRIGGER_CHANCE * 0.72;
+      const loopBoost = canBoostNow && brain.boostCooldownMs <= 0 && Math.random() < BOOST_EVASION_TRIGGER_CHANCE * 0.72;
       if (loopBoost) {
         brain.boostHoldUntilMs = now + BOOST_HOLD_MS;
       }
       const activeLoopBoost = loopBoost || boostHoldActive;
-      bot.setBotTarget(this.applyBoostWobble(loopAngle, brain.boostNoisePhase, activeLoopBoost), activeLoopBoost);
+      bot.setBotTarget(loopAngle, activeLoopBoost);
       brain.lastHead = head;
       return;
     }
@@ -334,6 +333,7 @@ export class BotAI {
         head
       );
       const proxBoost =
+        canBoostNow &&
         (brain.boostCooldownMs <= 0 || Math.random() < BOOST_EVASION_TRIGGER_CHANCE * 0.43) &&
         (proximityEscape.panic || proximityEscape.danger > 0.9) &&
         !proxSafe.trapped;
@@ -344,7 +344,7 @@ export class BotAI {
       brain.threatHoldUntilMs = now + THREAT_HOLD_MS;
       brain.escapeLoopDirection = this.pickEscapeLoopDirection(head, null, brain.escapeLoopDirection);
       const activeProxBoost = proxBoost || boostHoldActive;
-      bot.setBotTarget(this.applyBoostWobble(proxAngle, brain.boostNoisePhase, activeProxBoost), activeProxBoost);
+      bot.setBotTarget(proxAngle, activeProxBoost);
       brain.lastHead = head;
       return;
     }
@@ -372,7 +372,7 @@ export class BotAI {
       );
     }
 
-    const shouldBoost = planned.boost && brain.boostCooldownMs <= 0 && !safeHeading.trapped;
+    const shouldBoost = planned.boost && canBoostNow && brain.boostCooldownMs <= 0 && !safeHeading.trapped;
     if (shouldBoost) {
       brain.boostCooldownMs = 240 + Math.random() * 240;
       brain.boostHoldUntilMs = now + BOOST_HOLD_MS;
@@ -380,7 +380,7 @@ export class BotAI {
 
     brain.committedAngle = finalAngle;
     const activePlanBoost = shouldBoost || boostHoldActive;
-    bot.setBotTarget(this.applyBoostWobble(finalAngle, brain.boostNoisePhase, activePlanBoost), activePlanBoost);
+    bot.setBotTarget(finalAngle, activePlanBoost);
     brain.lastHead = head;
   }
 
@@ -697,15 +697,6 @@ export class BotAI {
   private applySteeringNoise(angle: number, phase: number): number {
     const noise = Math.sin(phase) * 0.085 + Math.sin(phase * 0.37) * 0.035;
     return this.wrapAngle(angle + noise);
-  }
-
-  private applyBoostWobble(angle: number, phase: number, boosting: boolean): number {
-    if (!boosting) {
-      return angle;
-    }
-
-    const wobble = Math.sin(phase) * 0.32 + Math.sin(phase * 0.51 + 1.2) * 0.16 + Math.sin(phase * 1.7) * 0.08;
-    return this.wrapAngle(angle + wobble);
   }
 
   private selectMassHotspot(
@@ -1099,7 +1090,6 @@ export class BotAI {
       escapeLoopDirection: Math.random() < 0.5 ? 1 : -1,
       massQueue: [],
       steeringNoisePhase: Math.random() * Math.PI * 2,
-      boostNoisePhase: Math.random() * Math.PI * 2,
       boostHoldUntilMs: 0
     };
     this.brains.set(botId, created);

@@ -84,6 +84,7 @@ export class World {
       return;
     }
     if (dropMass) {
+      this.botAI.registerMassCluster(snake.getSegments());
       this.orbManager.spawnFromSegments(snake.getSegments());
     }
     if (snake.isBot) {
