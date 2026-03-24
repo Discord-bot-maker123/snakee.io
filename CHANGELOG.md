@@ -2,6 +2,8 @@
 
 ## 2026-03-24
 
+- Fixed client-side interpolation jitter by implementing a 100ms render buffer and stable render clock synchronized with server time.
+- Resolved "vanishing tail" flicker during growth/shrink events by using `Math.max` and segment extrapolation in `interpolateSnake`.
 - Refreshed project logs with a current-state documentation pass to reduce drift between implementation and notes.
 - Added `docs/PROJECT_DOCUMENTATION.md` with an end-to-end architecture reference covering monorepo layout, runtime flow, game loop, networking protocol, auth/stats integration, and deployment/build workflow.
 - Recorded current operational notes in docs, including known architecture deltas to track (for example: `ws` currently used on server transport while `Rules.md` still states `uWebSockets.js`).
