@@ -29,6 +29,7 @@ type SnapshotState = {
 };
 
 const INTERPOLATION_DELAY_MS = 100;
+const MAX_PENDING_TICKS = 120;
 
 export class GameScene {
   private readonly app: PIXI.Application;
@@ -69,7 +70,7 @@ export class GameScene {
 
   private readonly snapshotHistory: SnapshotState[];
 
-  private pendingTick: TickMsg | null;
+  private readonly pendingTicks: TickMsg[];
 
   private lastAppliedTick: number;
 
@@ -120,7 +121,7 @@ export class GameScene {
     this.previous = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
     this.current = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
     this.snapshotHistory = [];
-    this.pendingTick = null;
+    this.pendingTicks = [];
     this.lastAppliedTick = -1;
     this.ambienceTime = 0;
 
@@ -165,7 +166,7 @@ export class GameScene {
       this.previous = this.cloneState(this.current);
       this.snapshotHistory.length = 0;
       this.pushSnapshot(this.current);
-      this.pendingTick = null;
+      this.pendingTicks.length = 0;
       this.lastAppliedTick = -1;
       this.updateHud();
       if (this.deathScreen) {
@@ -174,8 +175,14 @@ export class GameScene {
     });
 
     this.socket.onTick((message: TickMsg) => {
-      if (!this.pendingTick || message.tick > this.pendingTick.tick) {
-        this.pendingTick = message;
+      const lastQueued = this.pendingTicks[this.pendingTicks.length - 1];
+      if (message.tick <= this.lastAppliedTick || (lastQueued && message.tick <= lastQueued.tick)) {
+        return;
+      }
+
+      this.pendingTicks.push(message);
+      if (this.pendingTicks.length > MAX_PENDING_TICKS) {
+        this.pendingTicks.splice(0, this.pendingTicks.length - MAX_PENDING_TICKS);
       }
     });
 
@@ -217,10 +224,11 @@ export class GameScene {
   }
 
   private render(deltaMs: number): void {
-    if (this.pendingTick) {
-      const tickToApply = this.pendingTick;
-      this.pendingTick = null;
+    if (this.pendingTicks.length > 0) {
+      const tickToApply = this.pendingTicks.shift();
+      if (tickToApply) {
       this.applyTick(tickToApply);
+      }
     }
 
     this.ambienceTime += deltaMs * 0.001;

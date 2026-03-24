@@ -9,6 +9,7 @@
 - Removed post-safety random boost wobble from bot steering, so final movement headings stay aligned with hazard-validated safe angles.
 - Added explicit bot boost energy awareness (`Snake.canStartBoost()`), and gated all bot boost triggers/holds on actual available energy + segment eligibility.
 - Fixed server tick pacing regression that could present as periodic slow-motion by moving world stepping to a fixed-step accumulator with bounded catch-up (stable simulation rate under timer stalls).
+- Fixed interpolation spike pattern on bursty networks by replacing single pending-tick overwrite with an ordered tick queue, allowing client interpolation to consume snapshots progressively instead of jumping to the newest tick.
 
 ## 2026-03-23
 
