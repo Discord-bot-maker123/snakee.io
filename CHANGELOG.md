@@ -8,6 +8,7 @@
 - Fixed bot mass-awareness wiring for non-collision mass drops by registering bot mass clusters whenever `World.removeSnake(..., dropMass=true)` emits segment mass.
 - Removed post-safety random boost wobble from bot steering, so final movement headings stay aligned with hazard-validated safe angles.
 - Added explicit bot boost energy awareness (`Snake.canStartBoost()`), and gated all bot boost triggers/holds on actual available energy + segment eligibility.
+- Fixed server tick pacing regression that could present as periodic slow-motion by moving world stepping to a fixed-step accumulator with bounded catch-up (stable simulation rate under timer stalls).
 
 ## 2026-03-23
 

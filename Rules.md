@@ -107,6 +107,7 @@ This file defines how the coding agent must behave when building and maintaining
 
 - **Maintain `CHANGELOG.md`.** Record meaningful behavior changes, bug fixes, and policy updates with date-stamped entries.
 - **Prefer high-signal entries.** Log what changed and why; avoid dumping internal experimentation details.
+- **Update logs with every meaningful change.** After any merged or committed code change that affects behavior, performance, architecture, or policy, add/update the corresponding `CHANGELOG.md` entry in the same change set.
 
 ---
 

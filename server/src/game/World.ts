@@ -22,6 +22,7 @@ type TickResult = {
 const MIN_ACTIVE_SNAKES = 10;
 const BOT_ORB_VISION_RADIUS = 1200;
 const ORB_GRID_CELL_SIZE = 240;
+const MAX_CATCH_UP_STEPS = 5;
 
 export class World {
   private readonly snakes: Map<string, Snake>;
@@ -53,15 +54,31 @@ export class World {
       return;
     }
 
-    const deltaMs = 1000 / SERVER_TICK_RATE;
+    const tickMs = 1000 / SERVER_TICK_RATE;
+    const fixedStepSeconds = 1 / SERVER_TICK_RATE;
+    let accumulatorMs = 0;
+
     this.lastStepTimeMs = performance.now();
     this.timer = setInterval(() => {
       const now = performance.now();
-      const elapsedSeconds = Math.min(0.25, Math.max(0, (now - this.lastStepTimeMs) / 1000));
+      const elapsedMs = Math.min(250, Math.max(0, now - this.lastStepTimeMs));
       this.lastStepTimeMs = now;
-      const result = this.step(elapsedSeconds);
-      onTick(result);
-    }, deltaMs);
+
+      accumulatorMs += elapsedMs;
+
+      let steps = 0;
+      while (accumulatorMs >= tickMs && steps < MAX_CATCH_UP_STEPS) {
+        const result = this.step(fixedStepSeconds);
+        onTick(result);
+        accumulatorMs -= tickMs;
+        steps += 1;
+      }
+
+      if (steps === MAX_CATCH_UP_STEPS && accumulatorMs > tickMs) {
+        // Avoid an endless catch-up spiral under heavy stalls.
+        accumulatorMs = tickMs;
+      }
+    }, tickMs);
   }
 
   public stop(): void {
