@@ -30,7 +30,7 @@ type SnapshotState = {
 };
 
 const SNAPSHOT_BUFFER_SIZE = 32;
-const INTERPOLATION_DELAY_MS = 90;
+const INTERPOLATION_DELAY_MS = 140;
 
 export class GameScene {
   private readonly app: PIXI.Application;
@@ -207,7 +207,6 @@ export class GameScene {
     this.ambienceTime += deltaMs * 0.001;
     const serverRenderTime = Date.now() - INTERPOLATION_DELAY_MS;
     const interpolation = this.pickInterpolationSnapshots(serverRenderTime);
-    this.cleanupOldSnapshots(serverRenderTime);
     const renderedSnakes = this.buildRenderedSnakes(interpolation.from, interpolation.to, interpolation.alpha);
     const renderedOrbs: OrbState[] = Array.from(interpolation.to.orbs.values());
 
@@ -232,6 +231,8 @@ export class GameScene {
       this.hud.updateScore(player);
       this.hud.updateLeaderboard(interpolation.to.leaderboard);
     }
+
+    this.cleanupOldSnapshots(serverRenderTime);
   }
 
   private pickInterpolationSnapshots(serverRenderTime: number): {
