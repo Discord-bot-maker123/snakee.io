@@ -30,7 +30,7 @@ type SnapshotState = {
 };
 
 const SNAPSHOT_BUFFER_SIZE = 32;
-const INTERPOLATION_DELAY_MS = 140;
+const INTERPOLATION_DELAY_MS = 200;
 
 export class GameScene {
   private readonly app: PIXI.Application;
@@ -267,11 +267,17 @@ export class GameScene {
 
     const newest = snapshots[snapshots.length - 1];
     if (serverRenderTime >= newest.time) {
-      return {
-        from: newest,
-        to: newest,
-        alpha: 0
-      };
+      // Extrapolate beyond newest snapshot using last known velocity.
+      // This keeps entities moving smoothly when the buffer runs dry (high
+      // latency / free-tier jitter) instead of freezing on the last frame.
+      if (snapshots.length >= 2) {
+        const prev = snapshots[snapshots.length - 2];
+        const duration = Math.max(1, newest.time - prev.time);
+        const overflow = Math.min(serverRenderTime - newest.time, 200);
+        const alpha = 1 + overflow / duration;
+        return { from: prev, to: newest, alpha };
+      }
+      return { from: newest, to: newest, alpha: 0 };
     }
 
     for (let i = 0; i < snapshots.length - 1; i += 1) {
