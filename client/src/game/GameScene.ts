@@ -207,6 +207,7 @@ export class GameScene {
     this.ambienceTime += deltaMs * 0.001;
     const serverRenderTime = Date.now() - INTERPOLATION_DELAY_MS;
     const interpolation = this.pickInterpolationSnapshots(serverRenderTime);
+    this.cleanupOldSnapshots(serverRenderTime);
     const renderedSnakes = this.buildRenderedSnakes(interpolation.from, interpolation.to, interpolation.alpha);
     const renderedOrbs: OrbState[] = Array.from(interpolation.to.orbs.values());
 
@@ -238,7 +239,9 @@ export class GameScene {
     to: SnapshotState;
     alpha: number;
   } {
-    if (this.snapshots.length === 0) {
+    const snapshots = this.snapshots;
+
+    if (snapshots.length === 0) {
       return {
         from: this.current,
         to: this.current,
@@ -246,33 +249,44 @@ export class GameScene {
       };
     }
 
-    let from = this.snapshots[0];
-    let to = this.snapshots[this.snapshots.length - 1];
+    if (serverRenderTime <= snapshots[0].time) {
+      return {
+        from: snapshots[0],
+        to: snapshots[0],
+        alpha: 0
+      };
+    }
 
-    for (let i = 0; i < this.snapshots.length - 1; i += 1) {
-      const a = this.snapshots[i];
-      const b = this.snapshots[i + 1];
+    const newest = snapshots[snapshots.length - 1];
+    if (serverRenderTime >= newest.time) {
+      return {
+        from: newest,
+        to: newest,
+        alpha: 0
+      };
+    }
+
+    for (let i = 0; i < snapshots.length - 1; i += 1) {
+      const a = snapshots[i];
+      const b = snapshots[i + 1];
       if (serverRenderTime >= a.time && serverRenderTime <= b.time) {
-        from = a;
-        to = b;
-        break;
-      }
-
-      if (serverRenderTime < a.time) {
-        from = a;
-        to = a;
-        break;
+        const duration = Math.max(1, b.time - a.time);
+        const alpha = (serverRenderTime - a.time) / duration;
+        return { from: a, to: b, alpha };
       }
     }
 
-    const duration = Math.max(1, to.time - from.time);
-    const alpha = Math.min(1, Math.max(0, (serverRenderTime - from.time) / duration));
+    return {
+      from: newest,
+      to: newest,
+      alpha: 0
+    };
+  }
 
+  private cleanupOldSnapshots(serverRenderTime: number): void {
     while (this.snapshots.length > 2 && this.snapshots[1].time < serverRenderTime - INTERPOLATION_DELAY_MS) {
       this.snapshots.shift();
     }
-
-    return { from, to, alpha };
   }
 
   private buildRenderedSnakes(from: SnapshotState, to: SnapshotState, alpha: number): SnakeState[] {
