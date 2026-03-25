@@ -52,13 +52,9 @@ export class Broadcaster {
         removedSnakeIds.push(knownId);
       }
     }
-    if (forcedRemovedSnakeIds.length > 0) {
-      const removedSet = new Set<string>(removedSnakeIds);
-      for (const removedId of forcedRemovedSnakeIds) {
-        if (!removedSet.has(removedId)) {
-          removedSet.add(removedId);
-          removedSnakeIds.push(removedId);
-        }
+    for (const removedId of forcedRemovedSnakeIds) {
+      if (!removedSnakeIds.includes(removedId)) {
+        removedSnakeIds.push(removedId);
       }
     }
 

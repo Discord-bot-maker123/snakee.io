@@ -22,7 +22,6 @@ type TickResult = {
 const MIN_ACTIVE_SNAKES = 10;
 const BOT_ORB_VISION_RADIUS = 1200;
 const ORB_GRID_CELL_SIZE = 240;
-const MAX_CATCH_UP_STEPS = 5;
 
 export class World {
   private readonly snakes: Map<string, Snake>;
@@ -35,8 +34,6 @@ export class World {
 
   private timer: NodeJS.Timeout | null;
 
-  private lastStepTimeMs: number;
-
   private readonly boostDropTimers: Map<string, number>;
 
   public constructor() {
@@ -45,45 +42,15 @@ export class World {
     this.botAI = new BotAI();
     this.tickNumber = 0;
     this.timer = null;
-    this.lastStepTimeMs = 0;
     this.boostDropTimers = new Map<string, number>();
   }
 
   public start(onTick: (result: TickResult) => void): void {
-    if (this.timer) {
-      return;
-    }
-
-    const tickMs = 1000 / SERVER_TICK_RATE;
-    const fixedStepSeconds = 1 / SERVER_TICK_RATE;
-    let accumulatorMs = 0;
-
-    this.lastStepTimeMs = performance.now();
+    const deltaMs = 1000 / SERVER_TICK_RATE;
     this.timer = setInterval(() => {
-      const now = performance.now();
-      const elapsedMs = Math.min(250, Math.max(0, now - this.lastStepTimeMs));
-      this.lastStepTimeMs = now;
-
-      accumulatorMs += elapsedMs;
-
-      let steps = 0;
-      let latestResult: TickResult | null = null;
-      while (accumulatorMs >= tickMs && steps < MAX_CATCH_UP_STEPS) {
-        latestResult = this.step(fixedStepSeconds);
-        accumulatorMs -= tickMs;
-        steps += 1;
-      }
-
-      if (latestResult) {
-        // Emit one tick packet per timer cycle to avoid burst delivery jitter.
-        onTick(latestResult);
-      }
-
-      if (steps === MAX_CATCH_UP_STEPS && accumulatorMs > tickMs) {
-        // Avoid an endless catch-up spiral under heavy stalls.
-        accumulatorMs = tickMs;
-      }
-    }, tickMs);
+      const result = this.step(deltaMs / 1000);
+      onTick(result);
+    }, deltaMs);
   }
 
   public stop(): void {
@@ -106,7 +73,6 @@ export class World {
       return;
     }
     if (dropMass) {
-      this.botAI.registerMassCluster(snake.getSegments());
       this.orbManager.spawnFromSegments(snake.getSegments());
     }
     if (snake.isBot) {

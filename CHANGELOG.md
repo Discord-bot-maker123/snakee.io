@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-03-25
+
+- Rolled back movement/interpolation jitter experiments and restored core movement/network files to their pre-jitter-tuning baseline (`e746b28`) after repeated gameplay spike reports.
+
 ## 2026-03-24
 
 - Fixed client-side interpolation jitter by implementing a 100ms render buffer and stable render clock synchronized with server time.
@@ -13,6 +17,7 @@
 - Fixed server tick pacing regression that could present as periodic slow-motion by moving world stepping to a fixed-step accumulator with bounded catch-up (stable simulation rate under timer stalls).
 - Fixed interpolation spike pattern on bursty networks by replacing single pending-tick overwrite with an ordered tick queue, allowing client interpolation to consume snapshots progressively instead of jumping to the newest tick.
 - Fixed client-side jitter regression by stopping full queue drains per frame, applying bounded tick catch-up (`MAX_TICKS_APPLIED_PER_FRAME`), and restoring a stable interpolation clock based on `Date.now() - delay`.
+- Further smoothed interpolation by applying at most one queued server tick per render frame, removing periodic micro-jerks caused by multi-tick catch-up in a single frame.
 
 ## 2026-03-23
 

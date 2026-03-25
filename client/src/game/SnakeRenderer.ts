@@ -1,6 +1,6 @@
 import * as PIXI from "pixi.js";
 import { BlurFilter, Text, TextStyle } from "pixi.js";
-import { SNAKE_BODY_RADIUS } from "snakee-shared/constants";
+import { SNAKE_BODY_RADIUS, SNAKE_HEAD_RADIUS } from "snakee-shared/constants";
 import type { SnakeState } from "snakee-shared/types";
 
 type SnakeDisplay = {
@@ -185,5 +185,9 @@ export class SnakeRenderer {
 
   private themeIndexFromId(id: string): number {
     return this.stableHash(id) % SNAKE_THEMES.length;
+  }
+
+  private stripePhaseFromId(id: string): number {
+    return (this.stableHash(id) >>> 4) & 1;
   }
 }
