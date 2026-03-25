@@ -100,8 +100,8 @@ const THREAT_PANIC_RADIUS = 450; // Increased from 280
 const PREY_CHASE_RADIUS = 900; // Increased from 700
 const PROXIMITY_ESCAPE_RADIUS = 500; // Increased from 340
 const THREAT_HOLD_MS = 1700;
-const EVASION_BOOST_MIN_DISTANCE = 260;
-const EVASION_BACKTRACK_THRESHOLD = 1.05;
+const EVASION_BOOST_MIN_DISTANCE = 520;
+const EVASION_BACKTRACK_THRESHOLD = 0.62;
 const BOOST_HOLD_MS = 650;
 const BOOST_EVASION_TRIGGER_CHANCE = 0.42;
 const BOOST_HUNT_TRIGGER_CHANCE = 0.76;
@@ -110,7 +110,7 @@ const BOOST_WANDER_TRIGGER_CHANCE = 0.16;
 /* changed by gemini - more sampling for smoother avoidance */
 const HAZARD_SAMPLE_DISTANCES = [60, 120, 180, 260];
 const HAZARD_AVOID_SCORE = 5.5; // lower = more sensitive
-const HAZARD_TRAP_SCORE = 11.0;
+const HAZARD_TRAP_SCORE = 8.5;
 const PLAN_TURN_OFFSETS = [-1.3, -0.95, -0.6, -0.3, 0, 0.3, 0.6, 0.95, 1.3, Math.PI];
 const PLAN_HORIZON_STEPS = 8;
 const PLAN_STEP_SECONDS = 0.12;
@@ -180,13 +180,15 @@ export class BotAI {
     // Defensive bots detect threats at a wider radius; passive bots only react when very close
     const threatRadiusMult = brain.personality === "defensive" ? 1.35 : brain.personality === "passive" ? 0.55 : 1.0;
     const immediateThreat = this.findImmediateThreat(head, context.nearbySnakes, myLength, threatRadiusMult);
+    // Even zoned-out passive bots react if a threat is right on top of them
+    const panicOverride = passiveZonedOut && !!immediateThreat && immediateThreat.distance < THREAT_PANIC_RADIUS;
 
     if (criticalBoundary) {
       const inwardAngle = Math.atan2(-head.y, -head.x);
       this.enterMode(bot.id, brain, "recover", inwardAngle, now, 900 + Math.random() * 450, "critical boundary recovery", head);
     }
 
-    if (!passiveZonedOut && immediateThreat && immediateThreat.distance < THREAT_ALERT_RADIUS * threatRadiusMult) {
+    if ((!passiveZonedOut || panicOverride) && immediateThreat && immediateThreat.distance < THREAT_ALERT_RADIUS * threatRadiusMult) {
       brain.threatHoldUntilMs = now + THREAT_HOLD_MS;
       brain.escapeLoopDirection = this.pickEscapeLoopDirection(head, immediateThreat, brain.escapeLoopDirection);
       const panicAngle = this.computeEvadeAngle(head, immediateThreat, brain, true);
@@ -674,11 +676,11 @@ export class BotAI {
     anchorHead: Vec2 | null,
     personality: BotPersonality
   ): Vec2 | null {
-    // Passive bots never hunt; defensive bots rarely hunt (but will opportunistically go for nearby humans)
+    // Passive bots never hunt; defensive bots hunt opportunistically
     if (personality === "passive") return null;
     if (personality === "defensive") {
-      const hasNearbyHuman = nearbySnakes.some(s => !s.isBot && this.distance(head, s.head) < PREY_CHASE_RADIUS * 0.7);
-      if (!hasNearbyHuman && Math.random() < 0.85) return null;
+      const hasNearbyHuman = nearbySnakes.some(s => !s.isBot && this.distance(head, s.head) < PREY_CHASE_RADIUS * 0.8);
+      if (!hasNearbyHuman && Math.random() < 0.55) return null;
     }
 
     // Aggressive bots will chase snakes up to 90% their size; others stay at 72%
@@ -731,7 +733,7 @@ export class BotAI {
         }
       }
     }
-    return bestScore > -120 ? best : null;
+    return bestScore > -280 ? best : null;
   }
 
   private computeInterceptPoint(botHead: Vec2, prey: NearbySnake): Vec2 {
@@ -900,7 +902,7 @@ export class BotAI {
       reason = "hunt";
       const preyDistance = Math.hypot(preyTarget.x - head.x, preyTarget.y - head.y);
       // Aggressive bots boost hard to intercept — boost almost always when chasing
-      shouldBoost = preyDistance > 80 && preyDistance < 1200 &&
+      shouldBoost = preyDistance > 80 && preyDistance < 1800 &&
         Math.random() < BOOST_HUNT_TRIGGER_CHANCE * huntBoostMult;
     } else if (massHotspot && !nearBoundary) {
       baseAngle = Math.atan2(massHotspot.y - head.y, massHotspot.x - head.x);
@@ -1136,7 +1138,7 @@ export class BotAI {
 
     const personalityRoll = Math.random();
     const personality: BotPersonality =
-      personalityRoll < 0.28 ? "aggressive" : personalityRoll < 0.58 ? "defensive" : "passive";
+      personalityRoll < 0.40 ? "aggressive" : personalityRoll < 0.78 ? "defensive" : "passive";
 
     const created: BotBrain = {
       mode: "wander",

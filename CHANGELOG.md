@@ -2,6 +2,15 @@
 
 ## 2026-03-25
 
+- Fixed bot AI: rebalanced personality distribution to 40% aggressive / 38% defensive / 22% passive (was 28/30/42) so predator bots dominate the ecosystem.
+- Fixed bot-vs-bot hunting: raised prey score threshold from -120 to -280 so bots can chase other bots at normal ranges (200–400px) without the hunt being silently cancelled.
+- Fixed defensive bots being nearly non-aggressive: hunt skip chance reduced from 85% to 55%; defensive bots now also detect nearby humans from a slightly wider radius before deciding whether to hunt.
+- Fixed evasion boost triggering too late: `EVASION_BOOST_MIN_DISTANCE` raised from 260 to 520 so bots start boosting away from threats much earlier.
+- Fixed cornered bots not backtracking: `EVASION_BACKTRACK_THRESHOLD` reduced from 1.05 s to 0.62 s so course-reversal triggers before collision rather than after.
+- Fixed trap detection threshold too high: `HAZARD_TRAP_SCORE` lowered from 11.0 to 8.5 so surrounded bots enter survival mode more reliably.
+- Fixed passive zoned-out bots walking straight into death: added `panicOverride` so panic-close threats (<450 px) still trigger evasion even during zoned-out periods.
+- Extended aggressive bot hunt boost range from 1200 to 1800 px so bots keep boosting throughout the full chase instead of coasting at medium range.
+
 - Added three-tier orb system: common (size 4, value 1, 65% weight), uncommon (size 10, value 3, 25%), and rare (size 18, value 7, 10%) orbs now spawn with weighted random selection; tail growth now scales with orb value instead of orb count.
 - Added visual distinction to orbs by tier: rare orbs throb with larger pulse amplitude, faster pulse speed, and higher brightness; common orbs pulse subtly.
 - Added bot personality system: each bot is assigned aggressive (28%), defensive (30%), or passive (42%) on spawn, controlling threat detection radius, hunting behaviour, boost aggression, and evasion response.
