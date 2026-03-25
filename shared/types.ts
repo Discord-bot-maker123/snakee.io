@@ -20,6 +20,7 @@ export type OrbState = {
   y: number;
   color: number;
   size: number;
+  value: number;
 };
 
 export type LeaderboardEntry = {

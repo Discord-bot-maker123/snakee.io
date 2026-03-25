@@ -91,6 +91,6 @@ export class Broadcaster {
   }
 
   private static orbSignature(orb: OrbState): string {
-    return `${orb.id}:${orb.x.toFixed(1)}:${orb.y.toFixed(1)}:${orb.size.toFixed(1)}:${orb.color}`;
+    return `${orb.id}:${orb.x.toFixed(1)}:${orb.y.toFixed(1)}:${orb.size}:${orb.color}:${orb.value}`;
   }
 }

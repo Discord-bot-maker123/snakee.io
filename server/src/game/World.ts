@@ -32,7 +32,7 @@ export class World {
 
   private tickNumber: number;
 
-  private timer: NodeJS.Timeout | null;
+  private timer: ReturnType<typeof setTimeout> | null;
 
   private readonly boostDropTimers: Map<string, number>;
 
@@ -46,16 +46,41 @@ export class World {
   }
 
   public start(onTick: (result: TickResult) => void): void {
-    const deltaMs = 1000 / SERVER_TICK_RATE;
-    this.timer = setInterval(() => {
-      const result = this.step(deltaMs / 1000);
-      onTick(result);
-    }, deltaMs);
+    const targetMs = 1000 / SERVER_TICK_RATE;
+    const SUB_STEPS = 3;
+    let lastTime = Date.now();
+
+    const tick = (): void => {
+      const now = Date.now();
+      const elapsed = now - lastTime;
+      lastTime = now;
+
+      const cappedElapsed = Math.min(elapsed, 100);
+      const subDeltaSeconds = cappedElapsed / 1000 / SUB_STEPS;
+
+      let tickNumber = this.tickNumber;
+      const deaths: DeathEvent[] = [];
+      for (let i = 0; i < SUB_STEPS; i += 1) {
+        const result = this.step(subDeltaSeconds);
+        tickNumber = result.tick;
+        deaths.push(...result.deaths);
+      }
+
+      onTick({
+        tick: tickNumber,
+        deaths
+      });
+
+      const drift = Date.now() - now;
+      this.timer = setTimeout(tick, Math.max(0, targetMs - drift));
+    };
+
+    this.timer = setTimeout(tick, targetMs);
   }
 
   public stop(): void {
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
   }
@@ -151,8 +176,9 @@ export class World {
       this.handleBoostTrailDrops(snake, deltaSeconds);
       const consumed = this.orbManager.consumeAt(snake.headPosition());
       if (consumed.length > 0) {
-        snake.grow(consumed.length);
-        snake.addScore(consumed.length * 2);
+        const totalValue = consumed.reduce((sum, c) => sum + c.value, 0);
+        snake.grow(totalValue);
+        snake.addScore(totalValue * 2);
       }
     }
 

@@ -4,6 +4,8 @@ import { Snake } from "./Snake.js";
 
 type BotMode = "seek_orb" | "wander" | "recover" | "body_avoid" | "trapped_survival" | "evade_threat" | "pursue_prey";
 
+type BotPersonality = "aggressive" | "defensive" | "passive";
+
 export type SegmentHazard = {
   point: Vec2;
   weight: number;
@@ -25,6 +27,7 @@ export type NearbySnake = {
 
 type BotBrain = {
   mode: BotMode;
+  personality: BotPersonality;
   modeEnteredAtMs: number;
   modeUntilMs: number;
   committedAngle: number;
@@ -44,6 +47,8 @@ type BotBrain = {
   massQueue: string[];
   steeringNoisePhase: number;
   boostHoldUntilMs: number;
+  // Passive bots skip smart decisions on some frames
+  passiveSkipUntilMs: number;
 };
 
 type SafeHeading = {
@@ -165,14 +170,23 @@ export class BotAI {
     const boostHoldActive = now < brain.boostHoldUntilMs && canBoostNow;
     brain.steeringNoisePhase += deltaSeconds * (1.4 + Math.random() * 0.35);
     brain.trappedSeconds = brain.mode === "trapped_survival" ? brain.trappedSeconds + deltaSeconds : Math.max(0, brain.trappedSeconds - deltaSeconds);
-    const immediateThreat = this.findImmediateThreat(head, context.nearbySnakes, myLength);
+
+    // Passive bots occasionally enter a "zoned out" state where they ignore threats and just wander
+    if (brain.personality === "passive" && now >= brain.passiveSkipUntilMs && Math.random() < 0.008) {
+      brain.passiveSkipUntilMs = now + 800 + Math.random() * 1400;
+    }
+    const passiveZonedOut = brain.personality === "passive" && now < brain.passiveSkipUntilMs;
+
+    // Defensive bots detect threats at a wider radius; passive bots only react when very close
+    const threatRadiusMult = brain.personality === "defensive" ? 1.35 : brain.personality === "passive" ? 0.55 : 1.0;
+    const immediateThreat = this.findImmediateThreat(head, context.nearbySnakes, myLength, threatRadiusMult);
 
     if (criticalBoundary) {
       const inwardAngle = Math.atan2(-head.y, -head.x);
       this.enterMode(bot.id, brain, "recover", inwardAngle, now, 900 + Math.random() * 450, "critical boundary recovery", head);
     }
 
-    if (immediateThreat && immediateThreat.distance < THREAT_ALERT_RADIUS) {
+    if (!passiveZonedOut && immediateThreat && immediateThreat.distance < THREAT_ALERT_RADIUS * threatRadiusMult) {
       brain.threatHoldUntilMs = now + THREAT_HOLD_MS;
       brain.escapeLoopDirection = this.pickEscapeLoopDirection(head, immediateThreat, brain.escapeLoopDirection);
       const panicAngle = this.computeEvadeAngle(head, immediateThreat, brain, true);
@@ -498,18 +512,20 @@ export class BotAI {
     return this.wrapAngle(away + direction * (Math.PI / 2));
   }
 
-  private findImmediateThreat(head: Vec2, nearbySnakes: NearbySnake[], myLength: number): ThreatInfo | null {
+  private findImmediateThreat(head: Vec2, nearbySnakes: NearbySnake[], myLength: number, radiusMult: number = 1.0): ThreatInfo | null {
     let best: ThreatInfo | null = null;
     for (const snake of nearbySnakes) {
       const dx = head.x - snake.head.x;
       const dy = head.y - snake.head.y;
       const distance = Math.hypot(dx, dy);
-      if (distance > THREAT_ALERT_RADIUS) {
+      if (distance > THREAT_ALERT_RADIUS * radiusMult) {
         continue;
       }
 
       const largerFactor = snake.length / Math.max(1, myLength);
-      if (largerFactor < 1.05) {
+      // Defensive bots are scared of same-size snakes too; passive bots only fear large ones
+      const threatThreshold = radiusMult >= 1.35 ? 0.85 : radiusMult <= 0.55 ? 1.35 : 1.05;
+      if (largerFactor < threatThreshold) {
         continue;
       }
 
@@ -655,16 +671,26 @@ export class BotAI {
     head: Vec2,
     nearbySnakes: NearbySnake[],
     myLength: number,
-    anchorHead: Vec2 | null
+    anchorHead: Vec2 | null,
+    personality: BotPersonality
   ): Vec2 | null {
+    // Passive bots never hunt; defensive bots rarely hunt
+    if (personality === "passive") return null;
+    if (personality === "defensive" && Math.random() < 0.85) return null;
+
+    // Aggressive bots will chase snakes up to 90% their size; others stay at 72%
+    const preyLengthThreshold = personality === "aggressive" ? 0.90 : 0.72;
+    // Aggressive bots chase further
+    const chaseRadius = personality === "aggressive" ? PREY_CHASE_RADIUS * 1.3 : PREY_CHASE_RADIUS;
+
     let best: Vec2 | null = null;
     let bestScore = Number.NEGATIVE_INFINITY;
     for (const snake of nearbySnakes) {
-      if (snake.length >= myLength * 0.72) {
+      if (snake.length >= myLength * preyLengthThreshold) {
         continue;
       }
       const dist = this.distance(head, snake.head);
-      if (dist > PREY_CHASE_RADIUS) {
+      if (dist > chaseRadius) {
         continue;
       }
 
@@ -685,13 +711,28 @@ export class BotAI {
       }
       if (score > bestScore) {
         bestScore = score;
-        best = {
-          x: snake.head.x + snake.heading.x * 26,
-          y: snake.head.y + snake.heading.y * 26
-        };
+        if (personality === "aggressive") {
+          // Aim ahead of prey to intercept — cut across their path
+          best = this.computeInterceptPoint(head, snake);
+        } else {
+          best = {
+            x: snake.head.x + snake.heading.x * 26,
+            y: snake.head.y + snake.heading.y * 26
+          };
+        }
       }
     }
     return bestScore > -120 ? best : null;
+  }
+
+  private computeInterceptPoint(botHead: Vec2, prey: NearbySnake): Vec2 {
+    const dist = Math.hypot(prey.head.x - botHead.x, prey.head.y - botHead.y);
+    // Lead further when prey is far — aim ahead of their current path
+    const leadDist = Math.min(580, dist * 0.58 + 90);
+    return {
+      x: prey.head.x + prey.heading.x * leadDist,
+      y: prey.head.y + prey.heading.y * leadDist
+    };
   }
 
   private applySteeringNoise(angle: number, phase: number): number {
@@ -824,8 +865,9 @@ export class BotAI {
     brain: BotBrain,
     nearBoundary: boolean
   ): PlannedAction {
-    const threat = this.findImmediateThreat(head, context.nearbySnakes, myLength);
-    const preyTarget = this.selectPreyTarget(head, context.nearbySnakes, myLength, anchorHead);
+    const threat = this.findImmediateThreat(head, context.nearbySnakes, myLength,
+      brain.personality === "defensive" ? 1.35 : brain.personality === "passive" ? 0.55 : 1.0);
+    const preyTarget = this.selectPreyTarget(head, context.nearbySnakes, myLength, anchorHead, brain.personality);
     const massQueue = this.buildMassQueue(head, orbs, anchorHead, context.nearbySnakes, myLength);
     const massHotspot = this.selectMassHotspot(head, orbs, anchorHead, context.nearbySnakes, myLength);
     const topOrb = massQueue.length > 0 ? this.findOrbById(orbs, massQueue[0]) : null;
@@ -834,31 +876,44 @@ export class BotAI {
     let reason: PlannedAction["reason"] = "stabilize";
     let shouldBoost = false;
 
+    // Per-personality boost multipliers
+    const huntBoostMult   = brain.personality === "aggressive" ? 1.0  : brain.personality === "passive" ? 0.0  : 0.5;
+    const evadeBoostMult  = brain.personality === "defensive"  ? 1.4  : brain.personality === "passive" ? 0.6  : 1.0;
+    const collectBoostMult = brain.personality === "passive"   ? 0.35 : 1.0;
+
     if (threat && threat.distance < THREAT_ALERT_RADIUS) {
       baseAngle = this.computeEvadeAngle(head, threat, brain, true);
       reason = "evade";
-      shouldBoost = threat.distance < THREAT_ALERT_RADIUS && (threat.closingStrength > -0.5 || Math.random() < 0.35);
+      shouldBoost = threat.distance < THREAT_ALERT_RADIUS &&
+        (threat.closingStrength > -0.5 || Math.random() < 0.35 * evadeBoostMult);
     } else if (preyTarget && !nearBoundary) {
       baseAngle = Math.atan2(preyTarget.y - head.y, preyTarget.x - head.x);
       reason = "hunt";
       const preyDistance = Math.hypot(preyTarget.x - head.x, preyTarget.y - head.y);
-      // Aggressive hunt boosting
-      shouldBoost = preyDistance > 80 && preyDistance < 1100 && (Math.random() < BOOST_HUNT_TRIGGER_CHANCE || preyDistance > 420);
+      // Aggressive bots boost hard to intercept — boost almost always when chasing
+      shouldBoost = preyDistance > 80 && preyDistance < 1200 &&
+        Math.random() < BOOST_HUNT_TRIGGER_CHANCE * huntBoostMult;
     } else if (massHotspot && !nearBoundary) {
       baseAngle = Math.atan2(massHotspot.y - head.y, massHotspot.x - head.x);
       reason = "collect";
       const hotspotDistance = Math.hypot(massHotspot.x - head.x, massHotspot.y - head.y);
       const significantMass = massHotspot.orbCount >= 6 || massHotspot.score > 160;
-      shouldBoost = significantMass && hotspotDistance > 120 && hotspotDistance < 1350 && (Math.random() < BOOST_COLLECT_TRIGGER_CHANCE || hotspotDistance > 420);
+      shouldBoost = significantMass && hotspotDistance > 120 && hotspotDistance < 1350 &&
+        Math.random() < BOOST_COLLECT_TRIGGER_CHANCE * collectBoostMult;
     } else if (topOrb && !nearBoundary) {
       baseAngle = Math.atan2(topOrb.y - head.y, topOrb.x - head.x);
       reason = "collect";
       const orbDistance = Math.hypot(topOrb.x - head.x, topOrb.y - head.y);
       const significantMass = topOrb.size >= 5 || massQueue.length > 8;
-      shouldBoost = significantMass && orbDistance > 120 && orbDistance < 1250 && (Math.random() < BOOST_COLLECT_TRIGGER_CHANCE * 0.83 || orbDistance > 380);
+      shouldBoost = significantMass && orbDistance > 120 && orbDistance < 1250 &&
+        Math.random() < BOOST_COLLECT_TRIGGER_CHANCE * 0.83 * collectBoostMult;
     } else {
       baseAngle = this.pickWanderAngle(head, anchorHead);
       reason = "stabilize";
+      // Passive bots wander more erratically with random turns
+      if (brain.personality === "passive" && Math.random() < 0.04) {
+        baseAngle = this.wrapAngle(brain.committedAngle + (Math.random() - 0.5) * Math.PI);
+      }
       shouldBoost = Math.random() < BOOST_WANDER_TRIGGER_CHANCE;
     }
 
@@ -1070,8 +1125,13 @@ export class BotAI {
       return existing;
     }
 
+    const personalityRoll = Math.random();
+    const personality: BotPersonality =
+      personalityRoll < 0.28 ? "aggressive" : personalityRoll < 0.58 ? "defensive" : "passive";
+
     const created: BotBrain = {
       mode: "wander",
+      personality,
       modeEnteredAtMs: now,
       modeUntilMs: now + 1400 + Math.random() * 900,
       committedAngle: Math.random() * Math.PI * 2,
@@ -1090,7 +1150,8 @@ export class BotAI {
       escapeLoopDirection: Math.random() < 0.5 ? 1 : -1,
       massQueue: [],
       steeringNoisePhase: Math.random() * Math.PI * 2,
-      boostHoldUntilMs: 0
+      boostHoldUntilMs: 0,
+      passiveSkipUntilMs: 0
     };
     this.brains.set(botId, created);
     return created;

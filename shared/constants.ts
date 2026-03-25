@@ -4,9 +4,16 @@ export const CLIENT_RENDER_FPS = 60;
 export const INPUT_SEND_RATE = 30;
 
 export const MAX_ORBS = 2000;
-export const ORB_MIN_SIZE = 3;
-export const ORB_MAX_SIZE = 6;
+export const ORB_MIN_SIZE = 4;
 export const ORB_PULSE_SPEED = 1.8;
+
+// Orb tiers: [size, value, spawnWeight]
+// common: small, worth 1 segment | uncommon: medium, worth 3 | rare: large, worth 7
+export const ORB_TIERS: ReadonlyArray<{ size: number; value: number; weight: number }> = [
+  { size: 4,  value: 1, weight: 65 },
+  { size: 10, value: 3, weight: 25 },
+  { size: 18, value: 7, weight: 10 },
+];
 
 export const SNAKE_START_LENGTH = 3;
 export const SEGMENT_SPACING = 12;
