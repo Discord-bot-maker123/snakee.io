@@ -674,9 +674,12 @@ export class BotAI {
     anchorHead: Vec2 | null,
     personality: BotPersonality
   ): Vec2 | null {
-    // Passive bots never hunt; defensive bots rarely hunt
+    // Passive bots never hunt; defensive bots rarely hunt (but will opportunistically go for nearby humans)
     if (personality === "passive") return null;
-    if (personality === "defensive" && Math.random() < 0.85) return null;
+    if (personality === "defensive") {
+      const hasNearbyHuman = nearbySnakes.some(s => !s.isBot && this.distance(head, s.head) < PREY_CHASE_RADIUS * 0.7);
+      if (!hasNearbyHuman && Math.random() < 0.85) return null;
+    }
 
     // Aggressive bots will chase snakes up to 90% their size; others stay at 72%
     const preyLengthThreshold = personality === "aggressive" ? 0.90 : 0.72;
@@ -689,8 +692,10 @@ export class BotAI {
       if (snake.length >= myLength * preyLengthThreshold) {
         continue;
       }
+      // Human players can be detected from further away
+      const effectiveRadius = !snake.isBot ? chaseRadius * 1.45 : chaseRadius;
       const dist = this.distance(head, snake.head);
-      if (dist > chaseRadius) {
+      if (dist > effectiveRadius) {
         continue;
       }
 
@@ -708,6 +713,10 @@ export class BotAI {
       let score = (myLength - snake.length) * 2.5 - dist * 0.7 - threatPenalty;
       if (anchorHead) {
         score -= this.distance(anchorHead, snake.head) * 0.18;
+      }
+      // Heavily prioritise human players as targets — bots are worth less to hunt
+      if (!snake.isBot) {
+        score += personality === "aggressive" ? 380 : 160;
       }
       if (score > bestScore) {
         bestScore = score;

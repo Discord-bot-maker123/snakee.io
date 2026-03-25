@@ -2,6 +2,12 @@
 
 ## 2026-03-25
 
+- Added three-tier orb system: common (size 4, value 1, 65% weight), uncommon (size 10, value 3, 25%), and rare (size 18, value 7, 10%) orbs now spawn with weighted random selection; tail growth now scales with orb value instead of orb count.
+- Added visual distinction to orbs by tier: rare orbs throb with larger pulse amplitude, faster pulse speed, and higher brightness; common orbs pulse subtly.
+- Added bot personality system: each bot is assigned aggressive (28%), defensive (30%), or passive (42%) on spawn, controlling threat detection radius, hunting behaviour, boost aggression, and evasion response.
+- Aggressive bots now use an intercept mechanic: instead of chasing the prey's current position, they aim ahead along the prey's heading to cut across their path.
+- Bots now prioritise human players as prey: human targets receive a large score bonus (+380 for aggressive, +160 for others) and are detectable from 1.45× further away than bot targets.
+- Defensive bots will opportunistically hunt a nearby human player even if their normal hunt-skip roll would suppress hunting.
 - Rolled back movement/interpolation jitter experiments and restored core movement/network files to their pre-jitter-tuning baseline (`e746b28`) after repeated gameplay spike reports.
 
 ## 2026-03-24
