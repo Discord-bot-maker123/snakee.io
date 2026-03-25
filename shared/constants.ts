@@ -3,7 +3,7 @@ export const SERVER_TICK_RATE = 20;
 export const CLIENT_RENDER_FPS = 60;
 export const INPUT_SEND_RATE = 30;
 
-export const MAX_ORBS = 2000;
+export const MAX_ORBS = 1500;
 export const ORB_MIN_SIZE = 4;
 export const ORB_PULSE_SPEED = 1.8;
 

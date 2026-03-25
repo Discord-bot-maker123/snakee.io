@@ -47,7 +47,7 @@ export class World {
 
   public start(onTick: (result: TickResult) => void): void {
     const targetMs = 1000 / SERVER_TICK_RATE;
-    const SUB_STEPS = 3;
+    const SUB_STEPS = 2;
     let lastTime = Date.now();
 
     const tick = (): void => {
@@ -58,10 +58,15 @@ export class World {
       const cappedElapsed = Math.min(elapsed, 100);
       const subDeltaSeconds = cappedElapsed / 1000 / SUB_STEPS;
 
+      // Build orb grid once per tick and share across all sub-steps.
+      // Previously rebuilt inside step() 3x per tick = 6000 orb copies/tick.
+      const currentOrbs = this.orbManager.getAll();
+      const orbGrid = this.buildOrbGrid(currentOrbs);
+
       let tickNumber = this.tickNumber;
       const deaths: DeathEvent[] = [];
       for (let i = 0; i < SUB_STEPS; i += 1) {
-        const result = this.step(subDeltaSeconds);
+        const result = this.step(subDeltaSeconds, orbGrid);
         tickNumber = result.tick;
         deaths.push(...result.deaths);
       }
@@ -144,7 +149,7 @@ export class World {
     }));
   }
 
-  private step(deltaSeconds: number): TickResult {
+  private step(deltaSeconds: number, orbGrid: Map<string, OrbState[]>): TickResult {
     this.tickNumber += 1;
     if (!this.hasAliveHumanSnake()) {
       return {
@@ -154,9 +159,6 @@ export class World {
     }
 
     this.ensureBots();
-
-    const currentOrbs = this.orbManager.getAll();
-    const orbGrid = this.buildOrbGrid(currentOrbs);
 
     // Stagger bot AI: only update half the bots per tick (even/odd alternating).
     // Bots not updated this tick continue on their previous heading, which is
