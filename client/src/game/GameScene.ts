@@ -30,7 +30,7 @@ type SnapshotState = {
 };
 
 const SNAPSHOT_BUFFER_SIZE = 32;
-const INTERPOLATION_DELAY_MS = 200;
+const INTERPOLATION_DELAY_MS = 300;
 
 export class GameScene {
   private readonly app: PIXI.Application;

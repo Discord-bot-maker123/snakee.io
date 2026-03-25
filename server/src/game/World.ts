@@ -19,7 +19,7 @@ type TickResult = {
   deaths: DeathEvent[];
 };
 
-const MIN_ACTIVE_SNAKES = 10;
+const MIN_ACTIVE_SNAKES = 6;
 const BOT_ORB_VISION_RADIUS = 1200;
 const ORB_GRID_CELL_SIZE = 240;
 
@@ -158,6 +158,12 @@ export class World {
     const currentOrbs = this.orbManager.getAll();
     const orbGrid = this.buildOrbGrid(currentOrbs);
 
+    // Stagger bot AI: only update half the bots per tick (even/odd alternating).
+    // Bots not updated this tick continue on their previous heading, which is
+    // imperceptible but halves BotAI CPU cost — critical on free-tier hosting.
+    const isEvenTick = this.tickNumber % 2 === 0;
+    let botIndex = 0;
+
     for (const snake of this.snakes.values()) {
       if (!snake.alive) {
         continue;
@@ -165,11 +171,15 @@ export class World {
 
       const head = snake.headPosition();
       if (snake.isBot) {
-        this.botAI.update(snake, this.getNearbyOrbsFromGrid(orbGrid, head, BOT_ORB_VISION_RADIUS), deltaSeconds, {
-          anchorHead: this.findNearestHumanHead(head),
-          segmentHazards: this.findNearbyThreats(snake),
-          nearbySnakes: this.findNearbySnakes(snake)
-        });
+        const shouldUpdateAI = botIndex % 2 === (isEvenTick ? 0 : 1);
+        if (shouldUpdateAI) {
+          this.botAI.update(snake, this.getNearbyOrbsFromGrid(orbGrid, head, BOT_ORB_VISION_RADIUS), deltaSeconds, {
+            anchorHead: this.findNearestHumanHead(head),
+            segmentHazards: this.findNearbyThreats(snake),
+            nearbySnakes: this.findNearbySnakes(snake)
+          });
+        }
+        botIndex += 1;
       }
 
       snake.update(deltaSeconds);
