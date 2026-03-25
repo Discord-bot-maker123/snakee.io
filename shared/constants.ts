@@ -18,7 +18,7 @@ export const ORB_TIERS: ReadonlyArray<{ size: number; value: number; weight: num
 export const SNAKE_START_LENGTH = 3;
 export const SEGMENT_SPACING = 12;
 export const SNAKE_BASE_SPEED = 220;
-export const SNAKE_TURN_SPEED = 3.2;
+export const SNAKE_TURN_SPEED = 4.5;
 export const SNAKE_HEAD_RADIUS = 14;
 export const SNAKE_BODY_RADIUS = 10;
 

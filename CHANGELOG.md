@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-03-25 (2)
+
+- Fixed bot evasion turn radius: `SNAKE_TURN_SPEED` raised from 3.2 to 4.5 rad/s so bots can execute sharper emergency turns (full 180° now takes ~0.7 s instead of ~1.0 s; minimum turn radius drops from 69 px to 49 px).
+- Fixed `computeSafeHeading()` fighting emergency evasion: sharp-turn penalty reduced from `0.46` to `0.06` per radian of offset when called during evasion (`evade_threat` mode and proximity escapes), so hazard-avoiding angles that require hard turns are no longer penalised out of contention.
+
 ## 2026-03-25
 
 - Fixed bot AI: rebalanced personality distribution to 40% aggressive / 38% defensive / 22% passive (was 28/30/42) so predator bots dominate the ecosystem.

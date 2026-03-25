@@ -278,7 +278,7 @@ export class BotAI {
             ? this.stretchEscapeAngle(goalAngle, brain.escapeLoopDirection, brain.stuckSeconds, threatNow?.distance ?? Number.POSITIVE_INFINITY)
             : goalAngle;
         const noisyGoalAngle = this.applySteeringNoise(evasiveGoalAngle, brain.steeringNoisePhase);
-        const safeHeading = this.computeSafeHeading(head, noisyGoalAngle, context.segmentHazards, anchorHead);
+        const safeHeading = this.computeSafeHeading(head, noisyGoalAngle, context.segmentHazards, anchorHead, brain.mode === "evade_threat");
         if (brain.mode === "trapped_survival" || (brain.mode === "evade_threat" && safeHeading.trapped)) {
           if (safeHeading.trapped && context.segmentHazards.length > 0) {
             brain.committedAngle = this.computeTrapCircleAngle(head, context.segmentHazards, brain.trappedDirection);
@@ -334,7 +334,7 @@ export class BotAI {
     const proximityEscape = this.computeProximityEscape(head, context.nearbySnakes, myLength);
     if (proximityEscape && proximityEscape.danger > 0.02) {
       const noisyProximity = this.applySteeringNoise(proximityEscape.angle, brain.steeringNoisePhase);
-      const proxSafe = this.computeSafeHeading(head, noisyProximity, context.segmentHazards, anchorHead);
+      const proxSafe = this.computeSafeHeading(head, noisyProximity, context.segmentHazards, anchorHead, true);
       const proxAngle = proxSafe.trapped
         ? this.computeTrapCircleAngle(head, context.segmentHazards, brain.trappedDirection)
         : proxSafe.angle;
@@ -367,7 +367,7 @@ export class BotAI {
 
     const planned = this.planLightModelAction(head, orbs, context, anchorHead, myLength, brain, nearBoundary);
     const noisyPlanned = this.applySteeringNoise(planned.angle, brain.steeringNoisePhase);
-    const safeHeading = this.computeSafeHeading(head, noisyPlanned, context.segmentHazards, anchorHead);
+    const safeHeading = this.computeSafeHeading(head, noisyPlanned, context.segmentHazards, anchorHead, planned.reason === "evade");
     let finalAngle = safeHeading.angle;
     if (safeHeading.trapped) {
       finalAngle = this.computeTrapCircleAngle(head, context.segmentHazards, brain.trappedDirection);
@@ -427,7 +427,8 @@ export class BotAI {
     head: Vec2,
     goalAngle: number,
     hazards: SegmentHazard[],
-    anchorHead: Vec2 | null
+    anchorHead: Vec2 | null,
+    isEvasion: boolean = false
   ): SafeHeading {
     if (hazards.length === 0) {
       return { angle: goalAngle, trapped: false, hazardous: false, bestScore: 0 };
@@ -435,18 +436,21 @@ export class BotAI {
 
     /* changed by gemini - more granular angle offsets for smoother turns */
     const offsets = [
-      -1.8, -1.4, -1.0, -0.7, -0.4, -0.2, 
-      0, 
+      -1.8, -1.4, -1.0, -0.7, -0.4, -0.2,
+      0,
       0.2, 0.4, 0.7, 1.0, 1.4, 1.8,
       Math.PI
     ];
     let bestAngle = goalAngle;
     let bestScore = Number.POSITIVE_INFINITY;
     let forwardScore = Number.POSITIVE_INFINITY;
+    // During evasion, allow hard/sharp turns — remove the directional penalty so any
+    // safe angle is considered equally regardless of how far it deviates from the goal.
+    const turnPenalty = isEvasion ? 0.06 : 0.46;
 
     for (const offset of offsets) {
       const angle = this.wrapAngle(goalAngle + offset);
-      const score = this.scoreHeading(head, angle, hazards, anchorHead) + Math.abs(offset) * 0.46;
+      const score = this.scoreHeading(head, angle, hazards, anchorHead) + Math.abs(offset) * turnPenalty;
       if (offset === 0) {
         forwardScore = score;
       }
