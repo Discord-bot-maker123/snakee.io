@@ -180,23 +180,28 @@ export class GameScene {
   private applyTick(message: TickMsg): void {
     this.previous = this.cloneState(this.current);
 
+    const mergedSnakes = new Map<string, SnakeState>(this.previous.snakes);
     for (const removedId of message.removedSnakeIds) {
-      this.current.snakes.delete(removedId);
+      mergedSnakes.delete(removedId);
     }
-    for (const removedId of message.removedOrbIds) {
-      this.current.orbs.delete(removedId);
-    }
-
     for (const snake of message.snakes) {
-      this.current.snakes.set(snake.id, snake);
+      mergedSnakes.set(snake.id, snake);
     }
 
+    const mergedOrbs = new Map<string, OrbState>(this.current.orbs);
+    for (const removedId of message.removedOrbIds) {
+      mergedOrbs.delete(removedId);
+    }
     for (const orb of message.orbs) {
-      this.current.orbs.set(orb.id, orb);
+      mergedOrbs.set(orb.id, orb);
     }
 
-    this.current.leaderboard = message.leaderboard;
-    this.current.time = message.serverTime;
+    this.current = {
+      snakes: mergedSnakes,
+      orbs: mergedOrbs,
+      leaderboard: message.leaderboard,
+      time: message.serverTime
+    };
     this.snapshots.push(this.cloneState(this.current));
     if (this.snapshots.length > SNAPSHOT_BUFFER_SIZE) {
       this.snapshots.splice(0, this.snapshots.length - SNAPSHOT_BUFFER_SIZE);

@@ -87,7 +87,7 @@ export class Broadcaster {
 
   private static snakeSignature(snake: SnakeState): string {
     const head = snake.segments[0] ?? { x: 0, y: 0 };
-    return `${snake.id}:${head.x.toFixed(1)}:${head.y.toFixed(1)}:${snake.score}:${snake.segments.length}:${snake.alive ? 1 : 0}`;
+    return `${snake.id}:${head.x.toFixed(2)}:${head.y.toFixed(2)}:${snake.score}:${snake.segments.length}:${snake.alive ? 1 : 0}`;
   }
 
   private static orbSignature(orb: OrbState): string {
