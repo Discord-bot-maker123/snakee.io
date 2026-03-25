@@ -434,13 +434,7 @@ export class BotAI {
       return { angle: goalAngle, trapped: false, hazardous: false, bestScore: 0 };
     }
 
-    /* changed by gemini - more granular angle offsets for smoother turns */
-    const offsets = [
-      -1.8, -1.4, -1.0, -0.7, -0.4, -0.2,
-      0,
-      0.2, 0.4, 0.7, 1.0, 1.4, 1.8,
-      Math.PI
-    ];
+    const offsets = [-1.4, -0.95, -0.5, -0.2, 0, 0.2, 0.5, 0.95, 1.4, Math.PI];
     let bestAngle = goalAngle;
     let bestScore = Number.POSITIVE_INFINITY;
     let forwardScore = Number.POSITIVE_INFINITY;

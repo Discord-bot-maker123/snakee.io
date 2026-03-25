@@ -1,12 +1,11 @@
 import * as PIXI from "pixi.js";
-import { BlurFilter, Text, TextStyle } from "pixi.js";
-import { SNAKE_BODY_RADIUS, SNAKE_HEAD_RADIUS } from "snakee-shared/constants";
+import { Text, TextStyle } from "pixi.js";
+import { SNAKE_BODY_RADIUS } from "snakee-shared/constants";
 import type { SnakeState } from "snakee-shared/types";
 
 type SnakeDisplay = {
   container: PIXI.Container;
   body: PIXI.Graphics;
-  glow: PIXI.Graphics;
   head: PIXI.Graphics;
   nameText: Text;
 };
@@ -30,14 +29,11 @@ export class SnakeRenderer {
 
   private readonly displays: Map<string, SnakeDisplay>;
 
-  private readonly blurFilter: BlurFilter;
-
   private readonly nameStyle: TextStyle;
 
   public constructor(layer: PIXI.Container) {
     this.layer = layer;
     this.displays = new Map<string, SnakeDisplay>();
-    this.blurFilter = new BlurFilter({ strength: 2.5, quality: 2 });
     this.nameStyle = new TextStyle({
       fontFamily: "'Courier New', monospace",
       fontSize: 11,
@@ -75,67 +71,43 @@ export class SnakeRenderer {
 
     const container = new PIXI.Container();
     const body = new PIXI.Graphics();
-    const glow = new PIXI.Graphics();
-    glow.filters = [this.blurFilter];
     const head = new PIXI.Graphics();
     const nameText = new Text({ text: "", style: this.nameStyle });
     nameText.anchor.set(0.5, 1);
 
     container.addChild(body);
-    container.addChild(glow);
     container.addChild(head);
     container.addChild(nameText);
     this.layer.addChild(container);
 
-    const created: SnakeDisplay = { container, body, glow, head, nameText };
+    const created: SnakeDisplay = { container, body, head, nameText };
     this.displays.set(id, created);
     return created;
   }
 
   private drawSnake(display: SnakeDisplay, snake: SnakeState): void {
-    /* changed by gemini */
     display.body.clear();
     display.head.clear();
-    display.glow.clear(); // Glow removed as requested
 
     const head = snake.segments[0];
     const theme = SNAKE_THEMES[this.themeIndexFromId(snake.id)];
-    
+
     const scoreFactor = Math.min(2.5, 1 + Math.sqrt(snake.score || 0) * 0.04);
     const bodyRadius = SNAKE_BODY_RADIUS * 1.5 * scoreFactor;
-    const headRadius = bodyRadius; // Head is same size as body in the new screenshot
+    const headRadius = bodyRadius;
 
-    // 1. Draw Body Segments with 3D Spherical Look
+    // Body: single fill per segment (no shadow/highlight layers)
     for (let i = snake.segments.length - 1; i >= 1; i -= 1) {
       const segment = snake.segments[i];
-      
-      // Theme-based coloring (alternating for rainbow/pattern feel)
       const color = (Math.floor(i / 1.5) % 2 === 0) ? theme.primary : theme.secondary;
-      
-      // Base Circle
       display.body.beginFill(color, 1);
       display.body.drawCircle(segment.x, segment.y, bodyRadius);
-      display.body.endFill();
-
-      // Subtle Bottom-Right Shadow
-      display.body.beginFill(0x000000, 0.15);
-      display.body.drawCircle(segment.x + bodyRadius * 0.15, segment.y + bodyRadius * 0.15, bodyRadius * 0.85);
-      display.body.endFill();
-
-      // Subtle Top-Left Highlight
-      display.body.beginFill(0xffffff, 0.15);
-      display.body.drawCircle(segment.x - bodyRadius * 0.2, segment.y - bodyRadius * 0.2, bodyRadius * 0.5);
       display.body.endFill();
     }
 
     // 2. Draw Head
     display.head.beginFill(theme.primary, 1);
     display.head.drawCircle(head.x, head.y, headRadius);
-    display.head.endFill();
-    
-    // 3D effect on head
-    display.head.beginFill(0xffffff, 0.15);
-    display.head.drawCircle(head.x - headRadius * 0.2, head.y - headRadius * 0.2, headRadius * 0.5);
     display.head.endFill();
 
     // 3. Dynamic Eyes (tracking direction)

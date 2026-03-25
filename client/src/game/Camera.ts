@@ -16,19 +16,54 @@ export class Camera {
 
   private zoom: number;
 
+  private lastTarget: Vec2 | null;
+
+  private smoothedVelocity: Vec2;
+
+  private static readonly DEADZONE = 8;
+
   public constructor(world: PIXI.Container, renderer: PIXI.Renderer) {
     this.world = world;
     this.renderer = renderer;
     this.position = { x: 0, y: 0 };
     this.zoom = 1;
+    this.lastTarget = null;
+    this.smoothedVelocity = { x: 0, y: 0 };
   }
 
-  public update(target: Vec2, speedRatio: number): void {
-    this.position.x += (target.x - this.position.x) * CAMERA_LERP;
-    this.position.y += (target.y - this.position.y) * CAMERA_LERP;
+  public update(target: Vec2, speedRatio: number, deltaMs: number): void {
+    const frameScale = Math.max(0.25, Math.min(3, deltaMs / (1000 / 60)));
+    const followAlpha = 1 - Math.pow(1 - CAMERA_LERP, frameScale);
+
+    const rawVelocity = this.lastTarget
+      ? { x: target.x - this.lastTarget.x, y: target.y - this.lastTarget.y }
+      : { x: 0, y: 0 };
+    this.lastTarget = { ...target };
+
+    // Smooth velocity with EMA to prevent camera jerk on sharp turns
+    const velAlpha = 0.15;
+    this.smoothedVelocity.x += (rawVelocity.x - this.smoothedVelocity.x) * velAlpha;
+    this.smoothedVelocity.y += (rawVelocity.y - this.smoothedVelocity.y) * velAlpha;
+
+    const lookAheadFactor = 3 + Math.min(1, Math.max(0, speedRatio)) * 4;
+    const desired = {
+      x: target.x + this.smoothedVelocity.x * lookAheadFactor,
+      y: target.y + this.smoothedVelocity.y * lookAheadFactor
+    };
+
+    const dx = desired.x - this.position.x;
+    const dy = desired.y - this.position.y;
+
+    if (Math.abs(dx) > Camera.DEADZONE) {
+      this.position.x += dx * followAlpha;
+    }
+    if (Math.abs(dy) > Camera.DEADZONE) {
+      this.position.y += dy * followAlpha;
+    }
 
     const nextZoom = CAMERA_ZOOM_MAX - Math.min(1, Math.max(0, speedRatio)) * 0.28;
-    this.zoom += (nextZoom - this.zoom) * 0.08;
+    const zoomAlpha = 1 - Math.pow(1 - 0.08, frameScale);
+    this.zoom += (nextZoom - this.zoom) * zoomAlpha;
     this.zoom = Math.min(CAMERA_ZOOM_MAX, Math.max(CAMERA_ZOOM_MIN, this.zoom));
 
     // Removed square clamping logic. Camera now centers on player head.

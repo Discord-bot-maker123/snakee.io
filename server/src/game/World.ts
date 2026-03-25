@@ -309,7 +309,7 @@ export class World {
 
       const segments = snake.getSegments();
       const baseWeight = 1 + Math.min(4, segments.length / 10);
-      const step = 2; // High resolution for hazard mapping
+      const step = 3;
       
       for (let i = 0; i < segments.length; i += step) {
         const segment = segments[i];
