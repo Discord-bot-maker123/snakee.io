@@ -31,8 +31,8 @@ export class BackgroundMusic {
       void this.ensureRunning();
     };
 
-    window.addEventListener("pointerdown", unlock, { passive: true });
-    window.addEventListener("keydown", unlock, { passive: true });
+    window.addEventListener("pointerdown", unlock, { passive: true, once: true });
+    window.addEventListener("keydown", unlock, { passive: true, once: true });
   }
 
   public async ensureRunning(): Promise<void> {

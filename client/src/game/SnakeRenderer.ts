@@ -170,7 +170,7 @@ export class SnakeRenderer {
     display.head.endFill();
 
     display.nameText.text = snake.name;
-    display.nameText.style.fill = "#ffffff";
+    display.nameText.style.fill = 0xffffff;
     display.nameText.style.fontSize = 11 * scoreFactor;
     display.nameText.position.set(head.x, head.y - headRadius - 12);
   }
@@ -187,7 +187,4 @@ export class SnakeRenderer {
     return this.stableHash(id) % SNAKE_THEMES.length;
   }
 
-  private stripePhaseFromId(id: string): number {
-    return (this.stableHash(id) >>> 4) & 1;
-  }
 }

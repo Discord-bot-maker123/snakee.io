@@ -44,6 +44,11 @@ export class SocketClient {
       url.searchParams.set("access_token", this.accessToken);
     }
 
+    if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+      this.ws.onclose = null;
+      this.ws.close();
+    }
+
     this.ws = new WebSocket(url.toString());
     this.ws.binaryType = "arraybuffer";
     this.ws.onopen = (): void => {

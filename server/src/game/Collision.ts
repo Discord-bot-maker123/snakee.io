@@ -37,15 +37,12 @@ export class Collision {
       }
     }
 
-    const doomed = new Set<string>();
-
     for (const snake of alive) {
       const head = snake.headPosition();
-      
+
       // Arena Boundary Check
       if (!insideArena(head)) {
         results.push({ victimId: snake.id, killerId: null });
-        doomed.add(snake.id);
         continue;
       }
 
@@ -71,7 +68,6 @@ export class Collision {
             const dy = head.y - item.pos.y;
             if (dx * dx + dy * dy < radiusSq) {
               results.push({ victimId: snake.id, killerId: item.snakeId });
-              doomed.add(snake.id);
               collided = true;
               break;
             }

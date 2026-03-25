@@ -76,7 +76,7 @@ function parseClientMessage(raw: RawData): ClientMsg | null {
     if (!Number.isFinite(decoded.angle) || !Number.isFinite(decoded.seq)) {
       return null;
     }
-    return decoded;
+    return { ...decoded, boosting: Boolean(decoded.boosting) };
   } catch {
     return null;
   }

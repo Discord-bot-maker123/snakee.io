@@ -171,6 +171,8 @@ export class GameScene {
 
     this.socket.onDeath((message) => {
       if (this.playerId && message.victimId === this.playerId && this.deathScreen) {
+        this.inputHandler?.destroy();
+        this.inputHandler = null;
         this.startMenu.recordGame(message.finalLength, message.finalScore);
         this.deathScreen.show(message);
       }
@@ -223,7 +225,7 @@ export class GameScene {
     const playerHead: Vec2 = player?.segments[0] ?? { x: 0, y: 0 };
     const speedRatio = this.inputHandler?.isBoosting() ? 1 : 0;
 
-    this.camera.update(playerHead, speedRatio);
+    this.camera.update(playerHead, speedRatio, deltaMs);
 
     // Update input handler with player's screen position
     if (this.inputHandler && player) {

@@ -161,11 +161,14 @@ export class Snake {
 
   public headPosition(): Vec2 {
     const head = this.segments[0];
+    if (!head) {
+      return { x: 0, y: 0 };
+    }
     return { x: head.x, y: head.y };
   }
 
   public getSegments(): SnakeSegment[] {
-    return this.segments;
+    return this.segments.map((segment: SnakeSegment) => ({ ...segment }));
   }
 
   public toState(): SnakeState {

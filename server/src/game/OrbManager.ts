@@ -32,9 +32,11 @@ export class OrbManager {
       const dy = point.y - orb.y;
       const radius = SNAKE_BODY_RADIUS + orb.size;
       if (dx * dx + dy * dy <= radius * radius) {
-        this.orbs.delete(id);
         removed.push({ id, value: orb.value });
       }
+    }
+    for (const { id } of removed) {
+      this.orbs.delete(id);
     }
     return removed;
   }

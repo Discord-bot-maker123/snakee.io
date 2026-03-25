@@ -20,6 +20,14 @@ export class InputHandler {
   private playerScreenX: number;
   private playerScreenY: number;
 
+  private readonly boundMouseMove: (event: MouseEvent) => void;
+  private readonly boundTouchMove: (event: TouchEvent) => void;
+  private readonly boundContextMenu: (event: Event) => void;
+  private readonly boundMouseDown: (event: MouseEvent) => void;
+  private readonly boundMouseUp: (event: MouseEvent) => void;
+  private readonly boundKeyDown: (event: KeyboardEvent) => void;
+  private readonly boundKeyUp: (event: KeyboardEvent) => void;
+
   public constructor(root: HTMLElement, socket: SocketClient) {
     this.root = root;
     this.socket = socket;
@@ -35,6 +43,39 @@ export class InputHandler {
     this.playerScreenX = bounds.left + bounds.width * 0.5;
     this.playerScreenY = bounds.top + bounds.height * 0.5;
 
+    this.boundMouseMove = (event: MouseEvent) => {
+      this.angle = this.computeAngle(event.clientX, event.clientY);
+    };
+    this.boundTouchMove = (event: TouchEvent) => {
+      const touch = event.touches.item(0);
+      if (touch) {
+        this.angle = this.computeAngle(touch.clientX, touch.clientY);
+      }
+    };
+    this.boundContextMenu = (event: Event) => {
+      event.preventDefault();
+    };
+    this.boundMouseDown = (event: MouseEvent) => {
+      if (event.button === 2) {
+        this.boosting = true;
+      }
+    };
+    this.boundMouseUp = (event: MouseEvent) => {
+      if (event.button === 2) {
+        this.boosting = false;
+      }
+    };
+    this.boundKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        this.boosting = true;
+      }
+    };
+    this.boundKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        this.boosting = false;
+      }
+    };
+
     this.bindEvents();
     this.startSending();
   }
@@ -44,6 +85,14 @@ export class InputHandler {
       window.clearInterval(this.sendTimer);
       this.sendTimer = null;
     }
+
+    this.root.removeEventListener("mousemove", this.boundMouseMove);
+    this.root.removeEventListener("touchmove", this.boundTouchMove);
+    this.root.removeEventListener("contextmenu", this.boundContextMenu);
+    this.root.removeEventListener("mousedown", this.boundMouseDown);
+    this.root.removeEventListener("mouseup", this.boundMouseUp);
+    window.removeEventListener("keydown", this.boundKeyDown);
+    window.removeEventListener("keyup", this.boundKeyUp);
   }
 
   public isBoosting(): boolean {
@@ -56,44 +105,13 @@ export class InputHandler {
   }
 
   private bindEvents(): void {
-    this.root.addEventListener("mousemove", (event: MouseEvent) => {
-      this.angle = this.computeAngle(event.clientX, event.clientY);
-    });
-
-    this.root.addEventListener("touchmove", (event: TouchEvent) => {
-      const touch = event.touches.item(0);
-      if (touch) {
-        this.angle = this.computeAngle(touch.clientX, touch.clientY);
-      }
-    });
-
-    this.root.addEventListener("contextmenu", (event: Event) => {
-      event.preventDefault();
-    });
-
-    this.root.addEventListener("mousedown", (event: MouseEvent) => {
-      if (event.button === 2) {
-        this.boosting = true;
-      }
-    });
-
-    this.root.addEventListener("mouseup", (event: MouseEvent) => {
-      if (event.button === 2) {
-        this.boosting = false;
-      }
-    });
-
-    window.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.code === "Space") {
-        this.boosting = true;
-      }
-    });
-
-    window.addEventListener("keyup", (event: KeyboardEvent) => {
-      if (event.code === "Space") {
-        this.boosting = false;
-      }
-    });
+    this.root.addEventListener("mousemove", this.boundMouseMove);
+    this.root.addEventListener("touchmove", this.boundTouchMove);
+    this.root.addEventListener("contextmenu", this.boundContextMenu);
+    this.root.addEventListener("mousedown", this.boundMouseDown);
+    this.root.addEventListener("mouseup", this.boundMouseUp);
+    window.addEventListener("keydown", this.boundKeyDown);
+    window.addEventListener("keyup", this.boundKeyUp);
   }
 
   private computeAngle(clientX: number, clientY: number): number {

@@ -105,10 +105,4 @@ export class OrbRenderer {
     return texture;
   }
 
-  private applyBrightness(color: number, amount: number): number {
-    const r = Math.min(255, Math.max(0, Math.round(((color >> 16) & 0xff) * amount)));
-    const g = Math.min(255, Math.max(0, Math.round(((color >> 8) & 0xff) * amount)));
-    const b = Math.min(255, Math.max(0, Math.round((color & 0xff) * amount)));
-    return (r << 16) | (g << 8) | b;
-  }
 }
