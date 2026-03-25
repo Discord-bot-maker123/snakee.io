@@ -601,6 +601,10 @@ export class BotAI {
       }
 
       const sizeRatio = snake.length / Math.max(1, myLength);
+      // Don't flee from clearly smaller snakes — they're prey, not threats
+      if (sizeRatio < 0.80) {
+        continue;
+      }
       const nearFactor = (PROXIMITY_ESCAPE_RADIUS - dist) / PROXIMITY_ESCAPE_RADIUS;
       const weight = (1 + Math.max(0, sizeRatio - 0.7) * 1.9) * (0.4 + nearFactor * 2.6);
 
@@ -995,8 +999,8 @@ export class BotAI {
         const sizeRatio = snake.length / Math.max(1, myLength);
         if (sizeRatio > 1.0) {
           score -= this.sigmoid(-1.1 + sizeRatio * 1.25 + (280 - d) * 0.01) * 26;
-        } else if (reason === "hunt" && sizeRatio < 0.72 && d < 320) {
-          score += (0.72 - sizeRatio) * 14;
+        } else if (reason === "hunt" && sizeRatio < 0.90 && d < 500) {
+          score += (0.90 - sizeRatio) * 18;
         }
       }
     }
