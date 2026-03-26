@@ -105,6 +105,7 @@ const ANCHOR_FOLLOW_CHANCE = 0.28;
 const THREAT_ALERT_RADIUS = 780;
 const THREAT_PANIC_RADIUS = 450;
 const PREY_CHASE_RADIUS = 900;
+const MIN_HUNT_SEGMENTS = 10;  // bots must reach this size before hunting (like real slither.io)
 const PROXIMITY_ESCAPE_RADIUS = 500;
 const COIL_ENGAGE_RADIUS = 360;   // switch to coil_trap when this close to prey
 const COIL_ORBIT_START = 280;     // initial orbit radius
@@ -294,7 +295,10 @@ export class BotAI {
           brain.mode === "evade_threat"
             ? this.stretchEscapeAngle(goalAngle, brain.escapeLoopDirection, brain.stuckSeconds, threatNow?.distance ?? Number.POSITIVE_INFINITY)
             : goalAngle;
-        const noisyGoalAngle = this.applySteeringNoise(evasiveGoalAngle, brain.steeringNoisePhase);
+        // Don't add noise when trapped or body-avoiding — it wiggles the escape angle and extends the trap
+        const noisyGoalAngle = (brain.mode === "trapped_survival" || brain.mode === "body_avoid")
+          ? evasiveGoalAngle
+          : this.applySteeringNoise(evasiveGoalAngle, brain.steeringNoisePhase);
         const safeHeading = this.computeSafeHeading(head, noisyGoalAngle, context.segmentHazards, anchorHead, brain.mode === "evade_threat");
         if (brain.mode === "trapped_survival" || (brain.mode === "evade_threat" && safeHeading.trapped)) {
           if (safeHeading.trapped && context.segmentHazards.length > 0) {
@@ -348,6 +352,10 @@ export class BotAI {
       return;
     }
 
+    // Pre-update preyId this tick before proximity escape so the skip is current (fixes 1-tick stale lag)
+    const currentPreySnake = this.selectPreyTarget(head, context.nearbySnakes, myLength, anchorHead, brain.personality, brain.huntPreference);
+    brain.preyId = currentPreySnake?.id ?? null;
+
     const proximityEscape = this.computeProximityEscape(head, context.nearbySnakes, myLength, brain.preyId);
     if (proximityEscape && proximityEscape.danger > 0.02) {
       const noisyProximity = this.applySteeringNoise(proximityEscape.angle, brain.steeringNoisePhase);
@@ -387,8 +395,12 @@ export class BotAI {
       const coilPrey = brain.preyId ? context.nearbySnakes.find(s => s.id === brain.preyId) ?? null : null;
       const preyStillClose = coilPrey && this.distance(head, coilPrey.head) < COIL_ORBIT_START * 3.2;
       if (preyStillClose && coilPrey && brain.coilPivot) {
-        // Track prey's current position as pivot
-        brain.coilPivot = { x: coilPrey.head.x, y: coilPrey.head.y };
+        // Smoothly track prey head as pivot (lerp avoids jitter when prey zigzags)
+        const pivotLerp = Math.min(1, deltaSeconds * 6);
+        brain.coilPivot = {
+          x: brain.coilPivot.x + (coilPrey.head.x - brain.coilPivot.x) * pivotLerp,
+          y: brain.coilPivot.y + (coilPrey.head.y - brain.coilPivot.y) * pivotLerp,
+        };
         // Shrink orbit radius to tighten the coil
         brain.coilRadius = Math.max(COIL_ORBIT_MIN, brain.coilRadius - COIL_SHRINK_RATE * deltaSeconds);
         const coilAngle = this.computeCoilAngle(head, brain.coilPivot, brain.coilDirection, brain.coilRadius);
@@ -415,9 +427,11 @@ export class BotAI {
       this.enterMode(bot.id, brain, "wander", this.pickWanderAngle(head, anchorHead), now, 800, "coil ended", head);
       brain.preyId = null;
       brain.coilPivot = null;
+      brain.coilRadius = 0;
+      brain.coilDirection = 1;
     }
 
-    const planned = this.planLightModelAction(head, orbs, context, anchorHead, myLength, brain, nearBoundary);
+    const planned = this.planLightModelAction(head, orbs, context, anchorHead, myLength, brain, nearBoundary, currentPreySnake);
     const noisyPlanned = this.applySteeringNoise(planned.angle, brain.steeringNoisePhase);
     const safeHeading = this.computeSafeHeading(head, noisyPlanned, context.segmentHazards, anchorHead, planned.reason === "evade");
     let finalAngle = safeHeading.angle;
@@ -584,7 +598,8 @@ export class BotAI {
 
       const largerFactor = snake.length / Math.max(1, myLength);
       // Defensive bots are scared of same-size snakes too; passive bots only fear large ones
-      const threatThreshold = radiusMult >= 1.35 ? 0.85 : radiusMult <= 0.55 ? 1.35 : 1.05;
+      // Defensive bots flee snakes at least their own size; passive only flee meaningfully larger ones
+      const threatThreshold = radiusMult >= 1.35 ? 1.0 : radiusMult <= 0.55 ? 1.35 : 1.05;
       if (largerFactor < threatThreshold) {
         continue;
       }
@@ -743,8 +758,9 @@ export class BotAI {
     personality: BotPersonality,
     huntPreference: "human" | "bot" | "any" = "any"
   ): NearbySnake | null {
-    // Passive bots never hunt; defensive bots hunt opportunistically
+    // Passive bots never hunt; small bots eat first and grow before hunting
     if (personality === "passive") return null;
+    if (myLength < MIN_HUNT_SEGMENTS) return null;
     if (personality === "defensive") {
       const hasNearbyHuman = nearbySnakes.some(s => !s.isBot && this.distance(head, s.head) < PREY_CHASE_RADIUS * 0.8);
       if (!hasNearbyHuman && Math.random() < 0.40) return null;
@@ -969,14 +985,13 @@ export class BotAI {
     anchorHead: Vec2 | null,
     myLength: number,
     brain: BotBrain,
-    nearBoundary: boolean
+    nearBoundary: boolean,
+    preySnake: NearbySnake | null = null
   ): PlannedAction {
     const threat = this.findImmediateThreat(head, context.nearbySnakes, myLength,
       brain.personality === "defensive" ? 1.35 : brain.personality === "passive" ? 0.55 : 1.0,
       brain.preyId);
-    const preySnake = this.selectPreyTarget(head, context.nearbySnakes, myLength, anchorHead, brain.personality, brain.huntPreference);
-    // Track the prey ID for proximity-escape suppression on the next tick
-    brain.preyId = preySnake?.id ?? null;
+    // preySnake pre-computed and brain.preyId already updated in update() before proximity escape
     const massQueue = this.buildMassQueue(head, orbs, anchorHead, context.nearbySnakes, myLength);
     const massHotspot = this.selectMassHotspot(head, orbs, anchorHead, context.nearbySnakes, myLength);
     const topOrb = massQueue.length > 0 ? this.findOrbById(orbs, massQueue[0]) : null;
@@ -998,8 +1013,8 @@ export class BotAI {
     } else if (preySnake && !nearBoundary) {
       const preyDist = this.distance(head, preySnake.head);
 
-      // If close enough, switch to coil_trap to encircle prey
-      if (preyDist < COIL_ENGAGE_RADIUS && brain.personality !== "passive") {
+      // Only aggressive bots coil; defensive bots use cut-off intercept instead
+      if (preyDist < COIL_ENGAGE_RADIUS && brain.personality === "aggressive") {
         // Pick orbit direction that crosses the prey's path most effectively
         const preyToBot = { x: head.x - preySnake.head.x, y: head.y - preySnake.head.y };
         const cross = preySnake.heading.x * preyToBot.y - preySnake.heading.y * preyToBot.x;
@@ -1038,10 +1053,6 @@ export class BotAI {
     } else {
       baseAngle = this.pickWanderAngle(head, anchorHead);
       reason = "stabilize";
-      // Passive bots wander more erratically with random turns
-      if (brain.personality === "passive" && Math.random() < 0.04) {
-        baseAngle = this.wrapAngle(brain.committedAngle + (Math.random() - 0.5) * Math.PI);
-      }
       shouldBoost = Math.random() < BOOST_WANDER_TRIGGER_CHANCE;
     }
 
@@ -1256,16 +1267,16 @@ export class BotAI {
       return existing;
     }
 
+    // Real slither.io is mostly passive orb-collectors; only a minority actively hunt
     const personalityRoll = Math.random();
     const personality: BotPersonality =
-      personalityRoll < 0.40 ? "aggressive" : personalityRoll < 0.78 ? "defensive" : "passive";
+      personalityRoll < 0.25 ? "aggressive" : personalityRoll < 0.60 ? "defensive" : "passive";
 
-    // Hunt preference: aggressive bots split 50/50 human vs bot hunters;
-    // defensive bots lean toward "any" but 30% are bot hunters; passive never hunt anyway.
+    // Hunt preference: aggressive bots split 60/40 human vs bot; defensive bots mostly "any"
     const huntPreference: "human" | "bot" | "any" =
       personality === "passive" ? "any" :
-      personality === "aggressive" ? (Math.random() < 0.50 ? "human" : "bot") :
-      (Math.random() < 0.30 ? "bot" : "any");
+      personality === "aggressive" ? (Math.random() < 0.60 ? "human" : "bot") :
+      (Math.random() < 0.20 ? "bot" : "any");
 
     const created: BotBrain = {
       mode: "wander",

@@ -179,11 +179,11 @@ No code was changed. This session produced a verified picture of actual bot beha
 - Collision kill condition: distSq < 576 (24-unit radius), 40Hz rate ✓
 - `findNearbyThreats()` correctly excludes own segments (no self-flee) ✓
 
-### Minor bugs found (not yet fixed)
-- **preyId race** (Medium): `computeProximityEscape` uses `brain.preyId` from previous tick; planner updates it after. 1-tick (50ms) lag — barely perceptible but can cause brief flee toward own prey on target switch. Lines 348 vs 963.
-- **Coil state leak** (Low): `coilRadius` and `coilDirection` not cleared on coil exit (lines 413–414). Get overwritten at next coil entry anyway — no observed impact.
-- **Steering noise in recovery** (Low): `applySteeringNoise()` runs even during recover/evasion modes (line 293) — may slightly extend trap duration.
-- **Coil pivot jitter** (Low): pivot snaps to prey head every tick (line 387); zigzagging prey can wobble the orbit.
+### Minor bugs — all fixed (session 4, 2026-03-26)
+- **preyId race** (Medium): Fixed — `selectPreyTarget` now called and `brain.preyId` updated before `computeProximityEscape`, eliminating the 1-tick stale lag. Pre-computed prey passed into `planLightModelAction` to avoid double call.
+- **Coil state leak** (Low): Fixed — `coilRadius` and `coilDirection` explicitly cleared to defaults on coil exit.
+- **Steering noise in recovery** (Low): Fixed — `applySteeringNoise()` now skipped during `trapped_survival` and `body_avoid` modes so the escape angle isn't perturbed.
+- **Coil pivot jitter** (Low): Fixed — pivot now lerps toward prey head at 6× rate per second (≈50% per tick at 20Hz) instead of snapping, smoothing orbit when prey zigzags.
 
 ### Dead code identified (safe to remove, not urgent)
 - `lastTargetDistance`, `bestTargetDistance`, `noProgressSeconds` on `BotBrain` — initialized, never read
@@ -248,8 +248,8 @@ Build: clean (`tsc` passes).
 
 ## Current State (as of 2026-03-26, end of session 3)
 
-### Uncommitted changes (not yet deployed)
-All changes are in `server/src/game/BotAI.ts` only. `World.ts` is unchanged. Build is clean.
+### Committed (not yet deployed)
+All session 2 + session 3 changes are committed. Latest commit: `f61d5ed` — "Add hunt preference system: bots now split between hunting humans and other bots". `World.ts` is unchanged. Build is clean.
 
 ### What should now work
 - Bots hunt from game start (same-size hunting unlocked)
@@ -281,11 +281,11 @@ All changes are in `server/src/game/BotAI.ts` only. `World.ts` is unchanged. Bui
 - `client/src/game/SnakeRenderer.ts` — visual rendering of snakes
 - `shared/constants.ts` — game balance values
 
-## Recent Commits (before session 2 changes — not yet committed)
+## Recent Commits
 | Hash | Message |
 |------|---------|
+| `f61d5ed` | Add hunt preference system: bots now split between hunting humans and other bots |
 | `af03d91` | Fix bots never hunting: proximity escape was running from own prey |
 | `88a220d` | Fix stutter on turns: cut render cost 3x, smooth camera, trim BotAI |
 | `6db525b` | Cut tick CPU cost: shared orb grid, fewer sub-steps, fewer orbs |
 | `7b9957e` | Reduce server CPU load and widen client buffer to fix stutter on free tier |
-| `cc7497b` | Revert extrapolation — caused snake jump/rubber-band on snapshot arrival |
