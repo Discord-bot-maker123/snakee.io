@@ -102,7 +102,7 @@ export class GameScene {
 
     this.camera = new Camera(this.worldLayer, this.app.renderer);
     this.snakeRenderer = new SnakeRenderer(this.snakeLayer);
-    this.orbRenderer = new OrbRenderer(this.orbLayer, this.app.renderer);
+    this.orbRenderer = new OrbRenderer(this.orbLayer);
 
     this.socket = null;
     this.inputHandler = null;
@@ -362,19 +362,9 @@ export class GameScene {
           continue;
         }
 
-        // 1. Grout — slightly lighter than background so hex edges read as subtle grid lines
-        graphics.beginFill(0x0e141d, 1);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.94);
-        graphics.endFill();
-
-        // 2. Main tile body — dark charcoal matching snake.io hex floor
-        graphics.beginFill(0x090c12, 1);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.88);
-        graphics.endFill();
-
-        // 3. Subtle blue-tint inner face (very slight, avoids flat look)
-        graphics.beginFill(0x111e2e, 0.30);
-        this.drawHexagon(graphics, cx - 1, cy - 1, hexRadius * 0.76);
+        // Single dark tile — background (0x05070a) shows through the gap as the grout
+        graphics.beginFill(0x0d1119, 1);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.87);
         graphics.endFill();
       }
       rowIndex += 1;

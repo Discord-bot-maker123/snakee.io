@@ -6,6 +6,7 @@ type OrbSprite = {
   particle: PIXI.Particle;
   baseScale: number;
   value: number;
+  floatSeed: number; // unique per-orb phase offset for drift
 };
 
 export class OrbRenderer {
@@ -17,7 +18,7 @@ export class OrbRenderer {
 
   private pulseTime: number;
 
-  public constructor(layer: PIXI.Container, renderer: PIXI.Renderer) {
+  public constructor(layer: PIXI.Container) {
     this.container = new PIXI.ParticleContainer({
       dynamicProperties: {
         position: true,
@@ -25,14 +26,13 @@ export class OrbRenderer {
         color: true
       }
     });
-    this.orbTexture = this.createOrbTexture(renderer);
+    this.orbTexture = this.createOrbTexture();
     this.sprites = new Map<string, OrbSprite>();
     this.pulseTime = 0;
     layer.addChild(this.container);
   }
 
   public render(orbs: OrbState[], deltaMs: number): void {
-    /* changed by gemini */
     this.pulseTime += deltaMs * 0.001 * ORB_PULSE_SPEED;
     const seen = new Set<string>();
 
@@ -47,25 +47,32 @@ export class OrbRenderer {
           alpha: 1
         });
         this.container.addParticle(particle);
-        spriteEntry = { particle, baseScale: (orb.size / 10) * 1.2, value: orb.value };
+        // floatSeed: deterministic per-orb so each orb drifts independently
+        const seed = orb.id.charCodeAt(0) * 0.37 + orb.id.length * 1.13;
+        spriteEntry = { particle, baseScale: (orb.size / 10) * 1.1, value: orb.value, floatSeed: seed };
         this.sprites.set(orb.id, spriteEntry);
       }
 
-      // Pulse amplitude and speed scale with orb value: rare orbs throb more dramatically
-      const pulseAmp = orb.value >= 7 ? 0.22 : orb.value >= 3 ? 0.14 : 0.08;
-      const pulseSpeed = orb.value >= 7 ? 3.5 : orb.value >= 3 ? 2.8 : 2.2;
-      const pulse = (1 - pulseAmp) + Math.sin(this.pulseTime * pulseSpeed + orb.id.length) * pulseAmp;
-      const scale = spriteEntry.baseScale * pulse;
+      // Pulse: rare/death orbs throb more dramatically
+      const pulseAmp   = orb.value >= 7 ? 0.20 : orb.value >= 3 ? 0.12 : 0.07;
+      const pulseSpeed = orb.value >= 7 ? 2.8  : orb.value >= 3 ? 2.2  : 1.8;
+      const pulse = 1 - pulseAmp + Math.sin(this.pulseTime * pulseSpeed + spriteEntry.floatSeed) * pulseAmp;
+      spriteEntry.particle.scaleX = spriteEntry.baseScale * pulse;
+      spriteEntry.particle.scaleY = spriteEntry.baseScale * pulse;
+
+      // Gentle drift: orbs float softly in place (death orbs move a bit more)
+      const driftRadius = orb.value >= 7 ? 2.8 : 1.4;
+      const dx = Math.sin(this.pulseTime * 0.9  + spriteEntry.floatSeed * 1.7) * driftRadius;
+      const dy = Math.cos(this.pulseTime * 0.75 + spriteEntry.floatSeed * 2.1) * driftRadius;
+      spriteEntry.particle.x = orb.x + dx;
+      spriteEntry.particle.y = orb.y + dy;
 
       spriteEntry.particle.tint = orb.color;
-      spriteEntry.particle.x = orb.x;
-      spriteEntry.particle.y = orb.y;
-      spriteEntry.particle.scaleX = scale;
-      spriteEntry.particle.scaleY = scale;
-      // Rare orbs stay brighter, common orbs dim slightly
-      const alphaBase = orb.value >= 7 ? 0.95 : orb.value >= 3 ? 0.88 : 0.82;
-      const alphaAmp  = orb.value >= 7 ? 0.05 : 0.12;
-      spriteEntry.particle.alpha = alphaBase + Math.sin(this.pulseTime * 1.5 + orb.id.length * 0.5) * alphaAmp;
+
+      // Alpha breathe
+      const alphaBase = orb.value >= 7 ? 0.95 : 0.88;
+      const alphaAmp  = orb.value >= 7 ? 0.05 : 0.10;
+      spriteEntry.particle.alpha = alphaBase + Math.sin(this.pulseTime * 1.4 + spriteEntry.floatSeed) * alphaAmp;
     }
 
     for (const [id, orb] of this.sprites.entries()) {
@@ -76,37 +83,30 @@ export class OrbRenderer {
     }
   }
 
-  private createOrbTexture(renderer: PIXI.Renderer): PIXI.Texture {
-    const graphics = new PIXI.Graphics();
+  // Canvas radial gradient — the only way to get a truly smooth glow falloff.
+  // Stacked PIXI circles produce visible rings at each alpha step; a canvas
+  // gradient is continuous.
+  private createOrbTexture(): PIXI.Texture {
+    const size = 80;
+    const center = size / 2;
 
-    // Wide soft halo — gives orbs their glowing "floating" feel
-    graphics.beginFill(0xffffff, 0.06);
-    graphics.drawCircle(0, 0, 24);
-    graphics.endFill();
+    const canvas = document.createElement("canvas");
+    canvas.width  = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
 
-    // Outer glow ring
-    graphics.beginFill(0xffffff, 0.14);
-    graphics.drawCircle(0, 0, 17);
-    graphics.endFill();
+    const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+    gradient.addColorStop(0.00, "rgba(255,255,255,1.00)");  // bright solid core
+    gradient.addColorStop(0.10, "rgba(255,255,255,0.95)");  // dense inner glow
+    gradient.addColorStop(0.28, "rgba(255,255,255,0.55)");  // mid glow falloff
+    gradient.addColorStop(0.52, "rgba(255,255,255,0.18)");  // soft outer ring
+    gradient.addColorStop(0.78, "rgba(255,255,255,0.05)");  // faint halo
+    gradient.addColorStop(1.00, "rgba(255,255,255,0.00)");  // transparent edge
 
-    // Mid glow
-    graphics.beginFill(0xffffff, 0.38);
-    graphics.drawCircle(0, 0, 11);
-    graphics.endFill();
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
 
-    // Dense core
-    graphics.beginFill(0xffffff, 0.88);
-    graphics.drawCircle(0, 0, 5.5);
-    graphics.endFill();
-
-    // Bright centre point
-    graphics.beginFill(0xffffff, 1);
-    graphics.drawCircle(0, 0, 2.5);
-    graphics.endFill();
-
-    const texture = renderer.generateTexture(graphics);
-    graphics.destroy();
-    return texture;
+    return PIXI.Texture.from(canvas);
   }
 
 }
