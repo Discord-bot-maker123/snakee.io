@@ -3,47 +3,32 @@ import { ORB_PULSE_SPEED } from "snakee-shared/constants";
 import type { OrbState } from "snakee-shared/types";
 
 type OrbSprite = {
-  glowParticle: PIXI.Particle;
-  coreParticle: PIXI.Particle;
-  glowScale: number;
-  coreScale: number;
+  particle: PIXI.Particle;
+  color: number;
+  baseScale: number;
   value: number;
   floatSeed: number;
 };
 
 export class OrbRenderer {
-  private readonly glowContainer: PIXI.ParticleContainer;
-  private readonly coreContainer: PIXI.ParticleContainer;
+  private readonly layer: PIXI.Container;
 
-  private readonly glowTexture: PIXI.Texture;
-  private readonly coreTexture: PIXI.Texture;
+  // One texture and one ParticleContainer per unique orb color.
+  // Colors are fixed at spawn so caches never grow beyond the number of
+  // distinct colors the server uses (~10–20).
+  private readonly textureCache: Map<number, PIXI.Texture>;
+  private readonly containerCache: Map<number, PIXI.ParticleContainer>;
 
   private readonly sprites: Map<string, OrbSprite>;
 
   private pulseTime: number;
 
   public constructor(layer: PIXI.Container) {
-    this.glowTexture = this.createGlowTexture();
-    this.coreTexture = this.createCoreTexture();
-    this.sprites = new Map<string, OrbSprite>();
+    this.layer = layer;
+    this.textureCache = new Map();
+    this.containerCache = new Map();
+    this.sprites = new Map();
     this.pulseTime = 0;
-
-    // Glow layer drawn first (below), core layer drawn on top.
-    this.glowContainer = new PIXI.ParticleContainer({
-      dynamicProperties: { position: true, vertex: true, color: true }
-    });
-    this.coreContainer = new PIXI.ParticleContainer({
-      dynamicProperties: { position: true, vertex: true, color: true }
-    });
-
-    // Additive blending makes the glow add light to the scene rather than
-    // sitting on top of it — overlapping glows stack and the halo brightens
-    // the hex tiles beneath, matching the slither.io orb feel.
-    this.glowContainer.blendMode = "add";
-    this.coreContainer.blendMode = "add";
-
-    layer.addChild(this.glowContainer);
-    layer.addChild(this.coreContainer);
   }
 
   public render(orbs: OrbState[], deltaMs: number): void {
@@ -55,120 +40,138 @@ export class OrbRenderer {
       let entry = this.sprites.get(orb.id);
 
       if (!entry) {
-        const glowParticle = new PIXI.Particle({
-          texture: this.glowTexture,
+        const texture   = this.getTexture(orb.color);
+        const container = this.getContainer(orb.color);
+        const particle  = new PIXI.Particle({
+          texture,
           anchorX: 0.5,
           anchorY: 0.5,
           alpha: 1
         });
-        const coreParticle = new PIXI.Particle({
-          texture: this.coreTexture,
-          anchorX: 0.5,
-          anchorY: 0.5,
-          alpha: 1
-        });
-        this.glowContainer.addParticle(glowParticle);
-        this.coreContainer.addParticle(coreParticle);
+        container.addParticle(particle);
 
-        // Deterministic phase offset so each orb drifts independently.
+        // Deterministic phase so each orb drifts independently.
         const seed = orb.id.charCodeAt(0) * 0.37 + orb.id.length * 1.13;
-        const sizeRatio = orb.size / 10;
 
+        // 256 px texture; body fills ~30 % of radius.
+        // Scale chosen so the solid ball matches the orb tier radius:
+        //   size 4  → ~5 px body radius
+        //   size 10 → ~13 px body radius  (≈ SNAKE_BODY_RADIUS)
+        //   size 18 → ~24 px body radius  (large death orb)
         entry = {
-          glowParticle,
-          coreParticle,
-          glowScale: sizeRatio * 0.52,  // 192 px texture → ~100 px rendered diameter
-          coreScale: sizeRatio * 0.22,  //  64 px texture → ~14 px rendered diameter
+          particle,
+          color: orb.color,
+          baseScale: (orb.size / 10) * 0.35,
           value: orb.value,
           floatSeed: seed
         };
         this.sprites.set(orb.id, entry);
       }
 
-      // Pulse: rare/death orbs throb more dramatically.
+      // Pulse — rare/death orbs throb more dramatically.
       const pulseAmp   = orb.value >= 7 ? 0.18 : orb.value >= 3 ? 0.10 : 0.06;
       const pulseSpeed = orb.value >= 7 ? 2.8  : orb.value >= 3 ? 2.2  : 1.8;
       const pulse = 1 - pulseAmp + Math.sin(this.pulseTime * pulseSpeed + entry.floatSeed) * pulseAmp;
 
-      entry.glowParticle.scaleX = entry.glowScale * pulse;
-      entry.glowParticle.scaleY = entry.glowScale * pulse;
-      entry.coreParticle.scaleX = entry.coreScale * pulse;
-      entry.coreParticle.scaleY = entry.coreScale * pulse;
+      entry.particle.scaleX = entry.baseScale * pulse;
+      entry.particle.scaleY = entry.baseScale * pulse;
 
-      // Gentle drift: both layers move together.
+      // Gentle drift.
       const driftRadius = orb.value >= 7 ? 9 : orb.value >= 3 ? 5.5 : 3.5;
       const dx = Math.sin(this.pulseTime * 0.9  + entry.floatSeed * 1.7) * driftRadius;
       const dy = Math.cos(this.pulseTime * 0.75 + entry.floatSeed * 2.1) * driftRadius;
-      entry.glowParticle.x = orb.x + dx;
-      entry.glowParticle.y = orb.y + dy;
-      entry.coreParticle.x = orb.x + dx;
-      entry.coreParticle.y = orb.y + dy;
+      entry.particle.x = orb.x + dx;
+      entry.particle.y = orb.y + dy;
 
-      // Glow takes the orb color; core is always pure white (no tint).
-      entry.glowParticle.tint = orb.color;
-      entry.coreParticle.tint = 0xffffff;
+      // Color is baked into the texture — no PIXI tint needed.
+      entry.particle.tint = 0xffffff;
 
-      // Alpha breathe — core stays slightly brighter than the glow.
+      // Alpha breathe.
       const alphaBase = orb.value >= 7 ? 0.95 : 0.88;
       const alphaAmp  = orb.value >= 7 ? 0.05 : 0.10;
-      const alpha = alphaBase + Math.sin(this.pulseTime * 1.4 + entry.floatSeed) * alphaAmp;
-      entry.glowParticle.alpha = alpha;
-      entry.coreParticle.alpha = Math.min(1, alpha + 0.08);
+      entry.particle.alpha = alphaBase + Math.sin(this.pulseTime * 1.4 + entry.floatSeed) * alphaAmp;
     }
 
     for (const [id, entry] of this.sprites.entries()) {
       if (!seen.has(id)) {
-        this.glowContainer.removeParticle(entry.glowParticle);
-        this.coreContainer.removeParticle(entry.coreParticle);
+        this.containerCache.get(entry.color)?.removeParticle(entry.particle);
         this.sprites.delete(id);
       }
     }
   }
 
-  // Wide colored glow — tinted with orb.color at render time.
-  // Gradient peaks at mid-radius so the colored ring sits AROUND the white core,
-  // not at the center (which the white core covers anyway).
-  private createGlowTexture(): PIXI.Texture {
-    const size = 192;
-    const center = size / 2;
-    const canvas = document.createElement("canvas");
-    canvas.width  = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d")!;
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
-    const g = ctx.createRadialGradient(center, center, 0, center, center, center);
-    g.addColorStop(0.00, "rgba(255,255,255,0.40)");  // inner presence under core
-    g.addColorStop(0.15, "rgba(255,255,255,0.85)");  // rising to peak
-    g.addColorStop(0.30, "rgba(255,255,255,1.00)");  // peak color ring
-    g.addColorStop(0.50, "rgba(255,255,255,0.60)");  // strong bloom
-    g.addColorStop(0.70, "rgba(255,255,255,0.22)");  // diffuse outer bloom
-    g.addColorStop(0.88, "rgba(255,255,255,0.05)");  // faint halo
-    g.addColorStop(1.00, "rgba(255,255,255,0.00)");  // transparent edge
-
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-
-    return PIXI.Texture.from(canvas);
+  private getContainer(color: number): PIXI.ParticleContainer {
+    let c = this.containerCache.get(color);
+    if (!c) {
+      c = new PIXI.ParticleContainer({
+        dynamicProperties: { position: true, vertex: true, color: true }
+      });
+      // Additive blending: orb light is *added* to the scene, brightening
+      // the hex tiles beneath and letting overlapping glows stack naturally.
+      c.blendMode = "add";
+      this.layer.addChild(c);
+      this.containerCache.set(color, c);
+    }
+    return c;
   }
 
-  // Tight white core — never tinted, always white.
-  // Sits on top of the colored glow to give the "hot white center" look.
-  private createCoreTexture(): PIXI.Texture {
-    const size = 64;
+  private getTexture(color: number): PIXI.Texture {
+    let t = this.textureCache.get(color);
+    if (!t) {
+      t = this.createOrbTexture(color);
+      this.textureCache.set(color, t);
+    }
+    return t;
+  }
+
+  // Each color gets its own 256 px canvas texture so the gradient is drawn
+  // in the actual orb color — no PIXI tint multiplication involved.
+  //
+  // Structure (fraction of radius):
+  //   0 – 0.30  solid colored ball (slightly lighter at centre → 3-D sphere)
+  //   0.30–0.45  sharp edge falloff
+  //   0.45–0.72  soft glow bloom
+  //   0.72–1.00  faint outer halo
+  private createOrbTexture(color: number): PIXI.Texture {
+    const R = (color >> 16) & 0xff;
+    const G = (color >> 8)  & 0xff;
+    const B =  color        & 0xff;
+
+    const size   = 256;
     const center = size / 2;
+
     const canvas = document.createElement("canvas");
     canvas.width  = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d")!;
 
-    const g = ctx.createRadialGradient(center, center, 0, center, center, center);
-    g.addColorStop(0.00, "rgba(255,255,255,1.00)");  // pure white center
-    g.addColorStop(0.28, "rgba(255,255,255,0.95)");  // bright inner core
-    g.addColorStop(0.58, "rgba(255,255,255,0.40)");  // soft falloff
-    g.addColorStop(0.82, "rgba(255,255,255,0.08)");  // faint edge glow
-    g.addColorStop(1.00, "rgba(255,255,255,0.00)");  // transparent
+    // ── Main body + glow ──────────────────────────────────────────────────
+    const body = ctx.createRadialGradient(center, center, 0, center, center, center);
+    body.addColorStop(0.00, `rgba(${R},${G},${B},1.00)`);  // solid center
+    body.addColorStop(0.18, `rgba(${R},${G},${B},0.98)`);  // solid ball body
+    body.addColorStop(0.30, `rgba(${R},${G},${B},0.90)`);  // edge of ball
+    body.addColorStop(0.42, `rgba(${R},${G},${B},0.52)`);  // transition to glow
+    body.addColorStop(0.58, `rgba(${R},${G},${B},0.22)`);  // soft bloom
+    body.addColorStop(0.76, `rgba(${R},${G},${B},0.07)`);  // diffuse outer halo
+    body.addColorStop(1.00, `rgba(${R},${G},${B},0.00)`);  // transparent edge
 
-    ctx.fillStyle = g;
+    ctx.fillStyle = body;
+    ctx.fillRect(0, 0, size, size);
+
+    // ── Top-left specular highlight (3-D sphere feel) ─────────────────────
+    const hR = Math.min(255, R + 90);
+    const hG = Math.min(255, G + 90);
+    const hB = Math.min(255, B + 90);
+    const hx = center * 0.70;
+    const hy = center * 0.66;
+    const hr = center * 0.26;
+    const hl = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+    hl.addColorStop(0.0, `rgba(${hR},${hG},${hB},0.60)`);
+    hl.addColorStop(1.0, `rgba(${hR},${hG},${hB},0.00)`);
+
+    ctx.fillStyle = hl;
     ctx.fillRect(0, 0, size, size);
 
     return PIXI.Texture.from(canvas);

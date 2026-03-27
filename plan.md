@@ -507,6 +507,18 @@ Both layers share the same position + drift + pulse values so they move as one.
 
 Build: `npx tsc -p client/tsconfig.json --noEmit` ✅
 
+### Session 8 addendum 2 — Per-color baked textures (slither.io replication)
+Replaced shared-white-texture + PIXI tint with **one canvas texture per unique orb color** (cached) and **one additive ParticleContainer per color**.
+
+- `textureCache: Map<number, PIXI.Texture>` — canvas textures with color baked in
+- `containerCache: Map<number, PIXI.ParticleContainer>` — one additive container per color
+- Texture (256px): solid colored ball (0–30 % of radius) → sharp falloff (30–42 %) → soft bloom (42–76 %) → transparent edge; top-left specular highlight layer for 3D sphere feel
+- Scale: `(orb.size / 10) × 0.35` → size-4 body ≈ 5 px, size-10 ≈ 13 px, size-18 ≈ 24 px
+- No PIXI tint used — gradient is drawn directly in the orb's actual color
+- ~10–20 unique colors → caches never grow large
+
+Build: ✅
+
 ### Session 8 addendum — Additive blend mode
 Set `blendMode = "add"` on both `glowContainer` and `coreContainer`.
 Additive blending adds the orb's light on top of the scene (`result = src + dst`) instead of covering it, so the glow halos brighten the hex tiles beneath and overlapping orbs stack naturally — matching the slither.io light-emission look.
