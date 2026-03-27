@@ -268,24 +268,262 @@ All session 2 + session 3 changes are committed. Latest commit: `f61d5ed` — "A
 
 ### Known limitations
 - No persistence / accounts — scores are session-only
-- Passive bots (22%) never hunt — by design
+- Passive bots (10%) never hunt — by design
 - Bots can be outrun: same boost speed = coil wins by geometry not raw chase
 - Bot-hunters may grow large unchecked (no human targeting them, other bots too spread out to kill them)
 
 ---
 
+## Session 4 — Behavior Alignment + Sensor Intensification (2026-03-26)
+
+### Context
+User requested stronger “real-bot-like” behavior:
+- Aggressive: erratic boost, erratic cut-off chase, and coiling finishers
+- Defensive: very strong sensing, immediate predator-avoid, and tightening counter-coil when trapped
+
+### Changes implemented (`server/src/game/BotAI.ts`)
+- Personality distribution updated to:
+  - Aggressive 45%
+  - Defensive 45%
+  - Passive 10%
+- Added stronger sensors for both aggressive and defensive personalities:
+  - Aggressive threat radius multiplier raised (high but below defensive)
+  - Defensive threat radius multiplier widened further
+- Aggressive hunt behavior upgraded:
+  - Lateral cut-off bias during prey intercept
+  - Extra erratic steering offset while chasing
+  - Bursty erratic boost pulses with safety gating (`isAngleThreatened`)
+  - Coil trap remains close-range finisher
+- Defensive emergency behavior upgraded:
+  - Immediate break-off evade when predator closing strength is positive
+  - Immediate defensive boost if available
+- Defensive trapped behavior upgraded:
+  - Added `computeDefensiveCounterCoilAngle()`
+  - Defensive bots counter-coil when surrounded
+  - Coil radius tightens dynamically as surrounding ring tightens
+
+### Sensor model intensification (from PDF-driven insights)
+Reference analyzed: `Slither.io Deep Learning Bot.pdf` (2017, extracted locally).
+
+Applied signal changes:
+- Added explicit 3-band sensor model:
+  - Near (`<= 260`)
+  - Mid (`<= 540`)
+  - Far (`> 540`)
+- Added shared `sensorBandMultiplier()` and used it in:
+  - Angular threat-bin weighting
+  - Immediate threat ranking
+  - Proximity escape weighting
+- Upgraded `findImmediateThreat()` from nearest-distance to composite risk scoring:
+  - Distance band
+  - Closing strength
+  - Size ratio
+- Increased projected-head risk weighting and lookahead when enemies are closing
+- Increased defensive panic triggering in mid range when closure is positive
+
+### Validation
+- Build verified clean after each tuning pass:
+  - `npm run build --workspace server` ✅
+
+### What still needs live gameplay verification
+- Aggressive cut-off quality:
+  - Do aggressive bots reliably cross prey lines instead of tail-following?
+- Defensive anti-predator timing:
+  - Do defensive bots break off early enough without over-fleeing?
+- Defensive counter-coil quality:
+  - Does tightening feel intentional and survivable, not jittery?
+- Sensor sensitivity:
+  - Check for overreaction/noise in crowded fights (possible false positives from strong near-band gains)
+
+---
+
+## Session 5 — User Feedback Tuning Pass (2026-03-26)
+
+### Feedback addressed
+- Bots not cutting off humans enough
+- Human targeting too weak
+- Map felt too small / boundary felt visually early
+- Bot count too low
+- Boost usage dropping after initial bursts
+- Spawned snakes sometimes crashed immediately
+- Boost visuals missing slither-style white glow
+
+### Changes implemented
+- Bot pressure and spawn safety:
+  - `MIN_ACTIVE_SNAKES`: 6 → 10
+  - Added spawn safety validation (`isSpawnSafe`) and increased spawn retry attempts
+  - Adjusted human/bot spawn distance bands to reduce instant spawn collisions
+- Aggression/hunt behavior:
+  - `MIN_HUNT_SEGMENTS`: 10 → 3 (bots can hunt from spawn)
+  - Stronger human bias in `huntPreference` assignment
+  - Increased human target scoring and human chase radius multiplier
+  - Increased `COIL_ENGAGE_RADIUS`: 360 → 420
+  - Increased hunt/wander boost trigger rates
+- Boost feel and visuals:
+  - Boost economy tuned: drain 40 → 34, regen 22 → 26
+  - Added boosted-snake white inner segment glow in client renderer
+- Arena feel:
+  - `ARENA_RADIUS`: 3000 → 3600
+  - `MAX_ORBS`: 1500 → 2200 (density compensation)
+  - Hex background now clipped inside true boundary zone to reduce “dies before wall” perception
+- Networking/state:
+  - Added `SnakeState.boosting` and server serialization so client can render boost glow consistently
+
+### Validation
+- `npm run build --workspace shared` ✅
+- `npm run build --workspace server` ✅
+- `npx tsc -p client/tsconfig.json --noEmit` ✅
+- Note: `vite build` still fails in this environment with `spawn EPERM` (tooling/runtime permission issue, not TS type errors).
+
+---
+
+## Session 6 — Dev Reliability + State Addendum (2026-03-27)
+
+### What was added
+- EADDRINUSE recovery improvements:
+  - Added `server.on("error")` handling in `server/src/index.ts` for clearer `EADDRINUSE` diagnostics.
+  - Added `scripts/free-port.mjs` to kill any process listening on a target port (default used: `9001`).
+  - Wired `server/package.json` with:
+    - `"predev": "node ../scripts/free-port.mjs 9001"`
+  - Result: server dev startup now frees stale listeners first, reducing “old process still serving old code” confusion.
+
+### Verification performed
+- `npm run predev --workspace server` reports port cleanup status correctly.
+- `npm run build --workspace shared` ✅
+- `npm run build --workspace server` ✅
+- `npx tsc -p client/tsconfig.json --noEmit` ✅
+
+### Reverted / excluded by request
+- A screenshot-driven visual styling pass (snake bevel styling, orb drift/thickness, heavier death-mass orb spawning) was applied briefly and then fully reverted.
+- This plan intentionally excludes that reverted pass from active-state guidance.
+
+### Effective current state (active)
+- Bot behavior stack includes sessions 4–5 changes (sensor intensification + aggressive/defensive behavior alignment + spawn safety + increased bot count + human-target bias + boost economy tuning).
+- Arena and balance updates from session 5 remain active:
+  - `ARENA_RADIUS = 3600`
+  - `MAX_ORBS = 2200`
+  - `MIN_ACTIVE_SNAKES = 10`
+  - `MIN_HUNT_SEGMENTS = 3`
+- Boost state propagation and boost glow support remain active (`SnakeState.boosting`).
+
+---
+
+---
+
+## Session 7 — slither.io Realignment + Visual Overhaul (2026-03-27)
+
+### Context
+User clarified game is a **slither.io reskin** (not snake.io). Research confirmed slither.io bots are predominantly passive food collectors with a minority of active hunters. Session 5's aggressive settings (45/45/10, MIN_HUNT_SEGMENTS=3) were reverted.
+
+### Bot behaviour changes (`server/src/game/BotAI.ts`)
+
+**Personality distribution restored to slither.io feel: 25% aggressive / 35% defensive / 40% passive**
+
+- `MIN_HUNT_SEGMENTS`: 3 → 10 (bots eat orbs first, grow, then hunt)
+- Personality roll: `< 0.45/< 0.90` → `< 0.25/< 0.60`
+- **Aggressive**: evade duration 500ms (was 1300ms) for non-panic threats → quick dodge, snap back to hunt; `threatHoldUntilMs` 600ms (was 1700ms); hunt preference 60% human / 40% bot; lateral cut-off + erratic offset kept; coil trap kept
+- **Defensive**: skip hunt chance 40% → 60%; prey threshold 0.95 → 0.75 (only clearly smaller targets); chase radius 1.0× → 0.75×; human detection boost removed (aggressive-only now); hunt preference 25% human / 50% any / 25% bot; evade duration stays 1300ms
+- **Passive**: unchanged — never hunt, smooth orb collector, zoned-out state
+- Anchor tightened: hard leash 1050→780, soft leash 760→520, stay radius 580→360, follow chance 28%→50% (bots cluster near human player)
+- Boost rates raised across all reasons: evasion 0.42→0.60, hunt 0.88→0.94, collect 0.58→0.72, wander 0.22→0.38
+
+**Bugs fixed (4 bugs from session 3 audit, 2 bugs from Codex review):**
+- preyId race: selectPreyTarget pre-called before computeProximityEscape
+- Coil state leak: coilRadius/coilDirection cleared on exit
+- Steering noise in recovery: applySteeringNoise skipped during trapped_survival/body_avoid
+- Coil pivot jitter: pivot lerps toward prey head at 6×/sec
+- Defensive chase radius was 1.24× for humans due to 1.65× human boost applying to all personalities — now aggressive-only
+- Proximity escape path was unconditionally setting 1700ms threatHold for aggressive bots — fixed to 600ms
+
+**Dead code removed:**
+- `lastTargetDistance`, `bestTargetDistance`, `noProgressSeconds` fields + all assignments
+- `selectTargetOrb()` function (defined but never called)
+
+### Visual overhaul (`client/`)
+
+**SnakeRenderer.ts:**
+- 3D specular highlight on every segment + head (bright offset circle upper-left → shiny ball look)
+- Stripe banding 1.5 segs → 3 segs per stripe (cleaner, less flickering)
+- Themes expanded 4 → 12 (sky blue, forest green, orange-red, purple, pink, amber, teal, red, lime, natural tan, cyan, slate)
+- Eye shine dot added to pupils
+- Name label uses stroke for legibility
+
+**OrbRenderer.ts:**
+- Replaced stacked PIXI circles with `canvas.createRadialGradient()` for smooth glow falloff
+- 6-stop gradient: solid white core → transparent edge
+- Gentle per-orb drift animation (sin/cos offset, seed from orb ID)
+- Death orbs drift 2× more than common orbs
+- Dropped `renderer` param (canvas-based, no PIXI renderer needed)
+
+**GameScene.ts:**
+- Hex grid simplified to single dark tile layer (`0x0d1119`) on `0x05070a` background — removed blue inner tint that made hexes too vivid
+
+### Current state (end of session 7)
+All changes committed and pushed to `main`. Render auto-deploys server; Vercel auto-deploys client.
+
+Latest commits:
+- `16125fb` — Tighten bot anchor to human + boost more often
+- `904284c` — Fix two issues flagged by Codex review
+- `e588c16` — Restore slither.io bot personality adherence
+- `65ad98a` — Fix hex grid darkness and orb glow/drift
+- `f3947fb` — Visual overhaul: 3D snake segments, 12 themes, better orb glow, hex floor
+- `5c7b06d` — Rebalance bot behaviour to match real slither.io feel
+
+### Known limitations
+- No persistence / accounts — scores are session-only
+- Passive bots (40%) never hunt — by design
+- Bot-hunters may grow large unchecked
+- Orb drift is client-side cosmetic only (positions not synced back to server)
+
+---
+
+## Session 8 — Orb White-Core Fix (2026-03-27)
+
+### Problem
+The previous orb renderer used a single all-white radial gradient texture tinted with `orb.color` via PIXI. Because PIXI tint multiplies: `white × color = color`, the center of every orb was rendered as the orb's color — not white. The "hot white core" visible in real slither.io orbs was missing entirely.
+
+### Root cause
+`PIXI.Particle.tint` is a multiplicative operation on the texture RGB. A white texture tinted with any color becomes that color uniformly — there is no way to preserve a white center using a single tinted texture.
+
+### Fix (`client/src/game/OrbRenderer.ts`)
+Replaced the single-texture + tint approach with a **two-layer render**:
+
+1. **Glow layer** (`glowContainer`, 192px texture, tinted with `orb.color`):
+   - Gradient peaks at 30% radius (not at center) so the colored ring wraps *around* the white core
+   - Stops: 0.00=0.40α → 0.15=0.85α → 0.30=1.00α (peak) → 0.50=0.60α → 0.70=0.22α → 0.88=0.05α → 1.00=0.00α
+
+2. **Core layer** (`coreContainer`, 64px texture, always `tint=0xFFFFFF`):
+   - Tight bright white gaussian drawn on top of the glow
+   - Never tinted — always pure white regardless of orb color
+   - Stops: 0.00=1.00α → 0.28=0.95α → 0.58=0.40α → 0.82=0.08α → 1.00=0.00α
+
+Both layers share the same position + drift + pulse values so they move as one.
+
+**Scale**:
+- Glow: `(orb.size / 10) × 0.52` on 192px → ~100px rendered diameter
+- Core: `(orb.size / 10) × 0.22` on 64px → ~14px rendered diameter
+
+**Result**: White hot center → colored ring → soft diffuse bloom, matching the orb appearance in the reference screenshot.
+
+Build: `npx tsc -p client/tsconfig.json --noEmit` ✅
+
+---
+
 ## Files Most Likely to Need Changes
-- `server/src/game/BotAI.ts` — AI behaviour tuning (~1200 lines after session 2)
+- `server/src/game/BotAI.ts` — AI behaviour tuning
 - `server/src/game/World.ts` — game loop, bot spawn/respawn, context assembly
-- `client/src/game/GameScene.ts` — interpolation, snapshot buffer, death handling
+- `client/src/game/GameScene.ts` — interpolation, snapshot buffer, background
 - `client/src/game/SnakeRenderer.ts` — visual rendering of snakes
+- `client/src/game/OrbRenderer.ts` — orb glow and drift
 - `shared/constants.ts` — game balance values
 
 ## Recent Commits
 | Hash | Message |
 |------|---------|
+| `16125fb` | Tighten bot anchor to human + boost more often |
+| `904284c` | Fix two issues flagged by Codex review |
+| `e588c16` | Restore slither.io bot personality adherence |
+| `65ad98a` | Fix hex grid darkness and orb glow/drift |
+| `f3947fb` | Visual overhaul: 3D snake segments, 12 themes, better orb glow |
+| `5c7b06d` | Rebalance bot behaviour to match real slither.io feel |
 | `f61d5ed` | Add hunt preference system: bots now split between hunting humans and other bots |
-| `af03d91` | Fix bots never hunting: proximity escape was running from own prey |
-| `88a220d` | Fix stutter on turns: cut render cost 3x, smooth camera, trim BotAI |
-| `6db525b` | Cut tick CPU cost: shared orb grid, fewer sub-steps, fewer orbs |
-| `7b9957e` | Reduce server CPU load and widen client buffer to fix stutter on free tier |
