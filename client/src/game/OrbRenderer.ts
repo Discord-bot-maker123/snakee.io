@@ -49,7 +49,8 @@ export class OrbRenderer {
         this.container.addParticle(particle);
         // floatSeed: deterministic per-orb so each orb drifts independently
         const seed = orb.id.charCodeAt(0) * 0.37 + orb.id.length * 1.13;
-        spriteEntry = { particle, baseScale: (orb.size / 10) * 1.1, value: orb.value, floatSeed: seed };
+        // Texture is 128px; scale so the visible core reads the same apparent size
+        spriteEntry = { particle, baseScale: (orb.size / 10) * 0.72, value: orb.value, floatSeed: seed };
         this.sprites.set(orb.id, spriteEntry);
       }
 
@@ -61,7 +62,7 @@ export class OrbRenderer {
       spriteEntry.particle.scaleY = spriteEntry.baseScale * pulse;
 
       // Gentle drift: orbs float softly in place (death orbs move a bit more)
-      const driftRadius = orb.value >= 7 ? 2.8 : 1.4;
+      const driftRadius = orb.value >= 7 ? 9 : orb.value >= 3 ? 5.5 : 3.5;
       const dx = Math.sin(this.pulseTime * 0.9  + spriteEntry.floatSeed * 1.7) * driftRadius;
       const dy = Math.cos(this.pulseTime * 0.75 + spriteEntry.floatSeed * 2.1) * driftRadius;
       spriteEntry.particle.x = orb.x + dx;
@@ -85,9 +86,10 @@ export class OrbRenderer {
 
   // Canvas radial gradient — the only way to get a truly smooth glow falloff.
   // Stacked PIXI circles produce visible rings at each alpha step; a canvas
-  // gradient is continuous.
+  // gradient is continuous. Texture is 128px so the outer bloom halo has room
+  // to diffuse without being clipped.
   private createOrbTexture(): PIXI.Texture {
-    const size = 80;
+    const size = 128;
     const center = size / 2;
 
     const canvas = document.createElement("canvas");
@@ -97,10 +99,11 @@ export class OrbRenderer {
 
     const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
     gradient.addColorStop(0.00, "rgba(255,255,255,1.00)");  // bright solid core
-    gradient.addColorStop(0.10, "rgba(255,255,255,0.95)");  // dense inner glow
-    gradient.addColorStop(0.28, "rgba(255,255,255,0.55)");  // mid glow falloff
-    gradient.addColorStop(0.52, "rgba(255,255,255,0.18)");  // soft outer ring
-    gradient.addColorStop(0.78, "rgba(255,255,255,0.05)");  // faint halo
+    gradient.addColorStop(0.08, "rgba(255,255,255,0.97)");  // dense inner glow
+    gradient.addColorStop(0.20, "rgba(255,255,255,0.75)");  // strong inner halo
+    gradient.addColorStop(0.38, "rgba(255,255,255,0.42)");  // mid glow
+    gradient.addColorStop(0.58, "rgba(255,255,255,0.16)");  // diffuse outer bloom
+    gradient.addColorStop(0.80, "rgba(255,255,255,0.05)");  // faint edge halo
     gradient.addColorStop(1.00, "rgba(255,255,255,0.00)");  // transparent edge
 
     ctx.fillStyle = gradient;
