@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-03-27
+
+- Implemented "Cleaner" orb visuals in `client/src/game/OrbRenderer.ts` with a three-layer gradient structure:
+  - Added a small, bright white-ish inner core for better focus.
+  - Refined the mid-layer to use the pure orb color for richness.
+  - Added a soft, controlled outer glow using a darker hue for a more polished UI feel.
+- Maintained existing orb sizing and pulse logic while improving overall clarity and reducing visual "mess".
+
+## 2026-03-26
+
+- Refactored bot steering to use an angular threat-bin danger map (`THREAT_BIN_ARC = PI/8`) that is rebuilt every tick and reused across safety checks/planning.
+- Added projected enemy-head danger into the threat map so bots avoid near-future head positions, not only current head positions.
+- Updated `computeSafeHeading()`/`scoreHeading()` to include angle-bin risk penalties, improving threat-first lane selection.
+- Added boost safety gating (`isAngleThreatened`) so hunt/collect boost triggers are suppressed when the chosen heading is blocked by close threats.
+- Added lower-frequency cached food retarget cadence in planner (`nextRetargetAtMs` + cached `massQueue`/`targetOrbId`) to reduce jittery per-tick target switching.
+- Improved food scoring with heading alignment and danger-angle penalties so bots prefer safer forward mass lanes.
+- Extended rollout scoring to include angular danger pressure, keeping planner choices consistent with the new collision-angle model.
+- Added explicit inline `Edit:` comments in `server/src/game/BotAI.ts` for each new edit block to make review/audit easier.
+- Verified server TypeScript build passes after changes (`npm run build --workspace server`).
+- Tuned aggressive bots to boost in more erratic burst patterns (extra pulse chance in hunt/collect/stabilize and noisier boost cooldown windows).
+- Strengthened defensive sensing: wider immediate-threat detection radius and earlier proximity panic/flee thresholds against near-equal snakes.
+- Increased sensor quality for both aggressive and defensive personalities (aggressive threat radius up; defensive threat radius further widened), with passive remaining lower-reactivity.
+- Aggressive hunt behavior now uses erratic lateral cut-off steering while chasing prey, then transitions into coil traps when close.
+- Defensive emergency behavior now hard-breaks immediately when a predator is closing, including instant evade boost when available.
+- Added defensive counter-coil behavior for trapped states: defensive snakes orbit under pressure and tighten their coil radius as the surrounding ring tightens.
+- Intensified signal model with explicit near/mid/far sensor bands and shared sensor-gain multipliers across threat selection, threat-bin scoring, and proximity escape weighting.
+- Upgraded immediate threat selection from nearest-distance to composite risk scoring (distance band + closure strength + size ratio), improving early detection of true predators.
+- Strengthened projected-head danger scoring for closing snakes, including larger lookahead and higher angular bin weights when enemy heading points toward the bot.
+- Increased defensive panic triggers when closure is positive in mid range, so avoid behavior fires earlier against incoming predators.
+- Reviewed and scraped `Slither.io Deep Learning Bot.pdf` (local reference) and used its feature/detection takeaways to drive the sensor-intensification pass.
+- Increased active bot population from 6 to 10 (`MIN_ACTIVE_SNAKES`) and added spawn safety checks to reduce fresh-spawn immediate crashes.
+- Rebalanced bot spawn distances around players to reduce instant collisions while keeping engagement high.
+- Increased human-target bias and human-target score weighting so bots prioritize cutting off human players more consistently.
+- Lowered `MIN_HUNT_SEGMENTS` to 3 and raised hunt/ambient boost probabilities to improve early-game aggression and sustained boost pressure.
+- Added boosted-snake visual feedback on client: white inner segment glow while boosting (slither-like cue).
+- Adjusted arena presentation/scale: raised `ARENA_RADIUS` to 3600, increased `MAX_ORBS` to 2200 to keep density reasonable, and constrained hex tile rendering so border death aligns with perceived world boundary.
+- Tuned boost economy (`drain 40→34`, `regen 22→26`) to avoid post-burst “boost drought” feeling.
+
 ## 2026-03-25 (2)
 
 - Fixed bot evasion turn radius: `SNAKE_TURN_SPEED` raised from 3.2 to 4.5 rad/s so bots can execute sharper emergency turns (full 180° now takes ~0.7 s instead of ~1.0 s; minimum turn radius drops from 69 px to 49 px).

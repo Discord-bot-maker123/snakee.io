@@ -141,15 +141,15 @@ export class OrbRenderer {
     const G = (color >> 8)  & 0xff;
     const B =  color        & 0xff;
 
-    // Bright (white-mixed) center color
-    const bR = Math.min(255, R + 110);
-    const bG = Math.min(255, G + 110);
-    const bB = Math.min(255, B + 110);
+    // Inner core: bright center (closer to white)
+    const cR = Math.min(255, R + 180);
+    const cG = Math.min(255, G + 180);
+    const cB = Math.min(255, B + 180);
 
-    // Mid-bright (less white mixed)
-    const mR = Math.min(255, R + 55);
-    const mG = Math.min(255, G + 55);
-    const mB = Math.min(255, B + 55);
+    // Darker version for the outer glow falloff
+    const dR = Math.floor(R * 0.6);
+    const dG = Math.floor(G * 0.6);
+    const dB = Math.floor(B * 0.6);
 
     const size   = 256;
     const center = size / 2;
@@ -159,19 +159,30 @@ export class OrbRenderer {
     canvas.height = size;
     const ctx = canvas.getContext("2d")!;
 
-    // ── Main body + glow ──────────────────────────────────────────────────
-    const body = ctx.createRadialGradient(center, center, 0, center, center, center);
-    body.addColorStop(0.00, `rgba(${bR},${bG},${bB},1.00)`);  // washed bright center
-    body.addColorStop(0.08, `rgba(${bR},${bG},${bB},1.00)`);  // hold brightness
-    body.addColorStop(0.18, `rgba(${mR},${mG},${mB},1.00)`);  // transition mid-bright
-    body.addColorStop(0.28, `rgba(${R},${G},${B},0.95)`);     // pure color, solid body
-    body.addColorStop(0.40, `rgba(${R},${G},${B},0.60)`);     // edge of body
-    body.addColorStop(0.55, `rgba(${R},${G},${B},0.28)`);     // glow bloom begins
-    body.addColorStop(0.72, `rgba(${R},${G},${B},0.10)`);     // wide soft glow
-    body.addColorStop(0.88, `rgba(${R},${G},${B},0.03)`);     // faint outer diffuse
-    body.addColorStop(1.00, `rgba(${R},${G},${B},0.00)`);     // transparent edge
+    // ── Cleaner Orb Gradient ──────────────────────────────────────────────
+    // Structure based on "Deep Analysis":
+    // 1. Inner core (bright center, small)
+    // 2. Mid gradient layer (main color, smooth)
+    // 3. Outer glow (soft, wide, low opacity, darker hue)
+    
+    const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
+    
+    // Core (0.0 - 0.1)
+    grad.addColorStop(0.00, `rgba(${cR},${cG},${cB},1.0)`);
+    grad.addColorStop(0.08, `rgba(${cR},${cG},${cB},1.0)`);
+    
+    // Mid Layer (0.1 - 0.3)
+    grad.addColorStop(0.15, `rgba(${R},${G},${B},1.0)`);
+    grad.addColorStop(0.28, `rgba(${R},${G},${B},0.9)`);
+    
+    // Outer Glow (0.3 - 0.7) - Glow radius ≈ 2x–3x core radius
+    // We use a darker hue for the glow as per analysis
+    grad.addColorStop(0.40, `rgba(${dR},${dG},${dB},0.4)`);
+    grad.addColorStop(0.55, `rgba(${dR},${dG},${dB},0.15)`);
+    grad.addColorStop(0.75, `rgba(${dR},${dG},${dB},0.0)`);
+    grad.addColorStop(1.00, `rgba(${dR},${dG},${dB},0.0)`);
 
-    ctx.fillStyle = body;
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
     return PIXI.Texture.from(canvas);
