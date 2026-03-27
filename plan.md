@@ -507,6 +507,11 @@ Both layers share the same position + drift + pulse values so they move as one.
 
 Build: `npx tsc -p client/tsconfig.json --noEmit` ✅
 
+### Session 8 addendum — Additive blend mode
+Set `blendMode = "add"` on both `glowContainer` and `coreContainer`.
+Additive blending adds the orb's light on top of the scene (`result = src + dst`) instead of covering it, so the glow halos brighten the hex tiles beneath and overlapping orbs stack naturally — matching the slither.io light-emission look.
+Build: ✅
+
 ---
 
 ## Files Most Likely to Need Changes

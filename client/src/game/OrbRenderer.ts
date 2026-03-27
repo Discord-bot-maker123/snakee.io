@@ -36,6 +36,12 @@ export class OrbRenderer {
       dynamicProperties: { position: true, vertex: true, color: true }
     });
 
+    // Additive blending makes the glow add light to the scene rather than
+    // sitting on top of it — overlapping glows stack and the halo brightens
+    // the hex tiles beneath, matching the slither.io orb feel.
+    this.glowContainer.blendMode = "add";
+    this.coreContainer.blendMode = "add";
+
     layer.addChild(this.glowContainer);
     layer.addChild(this.coreContainer);
   }
