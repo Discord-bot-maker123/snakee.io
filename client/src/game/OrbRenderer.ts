@@ -53,15 +53,15 @@ export class OrbRenderer {
         // Deterministic phase so each orb drifts independently.
         const seed = orb.id.charCodeAt(0) * 0.37 + orb.id.length * 1.13;
 
-        // 256 px texture; body fills ~30 % of radius.
+        // 256 px texture; body fills ~20 % of radius, glow the rest.
         // Scale chosen so the solid ball matches the orb tier radius:
-        //   size 4  → ~5 px body radius
-        //   size 10 → ~13 px body radius  (≈ SNAKE_BODY_RADIUS)
-        //   size 18 → ~24 px body radius  (large death orb)
+        //   size 4  → ~4 px body radius
+        //   size 10 → ~11 px body radius  (≈ SNAKE_BODY_RADIUS)
+        //   size 18 → ~19 px body radius  (≈ SNAKE_HEAD_RADIUS)
         entry = {
           particle,
           color: orb.color,
-          baseScale: (orb.size / 10) * 0.35,
+          baseScale: (orb.size / 10) * 0.42,
           value: orb.value,
           floatSeed: seed
         };
@@ -130,14 +130,26 @@ export class OrbRenderer {
   // in the actual orb color — no PIXI tint multiplication involved.
   //
   // Structure (fraction of radius):
-  //   0 – 0.30  solid colored ball (slightly lighter at centre → 3-D sphere)
-  //   0.30–0.45  sharp edge falloff
-  //   0.45–0.72  soft glow bloom
-  //   0.72–1.00  faint outer halo
+  //   0 – 0.08   bright washed centre (white mixed in → "hot" core)
+  //   0.08–0.20  transitions from bright to pure orb color
+  //   0.20–0.32  solid orb body at full color
+  //   0.32–0.50  sharp falloff to semi-transparent
+  //   0.50–0.80  wide soft glow bloom
+  //   0.80–1.00  very faint outer diffuse halo
   private createOrbTexture(color: number): PIXI.Texture {
     const R = (color >> 16) & 0xff;
     const G = (color >> 8)  & 0xff;
     const B =  color        & 0xff;
+
+    // Bright (white-mixed) center color
+    const bR = Math.min(255, R + 110);
+    const bG = Math.min(255, G + 110);
+    const bB = Math.min(255, B + 110);
+
+    // Mid-bright (less white mixed)
+    const mR = Math.min(255, R + 55);
+    const mG = Math.min(255, G + 55);
+    const mB = Math.min(255, B + 55);
 
     const size   = 256;
     const center = size / 2;
@@ -149,29 +161,17 @@ export class OrbRenderer {
 
     // ── Main body + glow ──────────────────────────────────────────────────
     const body = ctx.createRadialGradient(center, center, 0, center, center, center);
-    body.addColorStop(0.00, `rgba(${R},${G},${B},1.00)`);  // solid center
-    body.addColorStop(0.18, `rgba(${R},${G},${B},0.98)`);  // solid ball body
-    body.addColorStop(0.30, `rgba(${R},${G},${B},0.90)`);  // edge of ball
-    body.addColorStop(0.42, `rgba(${R},${G},${B},0.52)`);  // transition to glow
-    body.addColorStop(0.58, `rgba(${R},${G},${B},0.22)`);  // soft bloom
-    body.addColorStop(0.76, `rgba(${R},${G},${B},0.07)`);  // diffuse outer halo
-    body.addColorStop(1.00, `rgba(${R},${G},${B},0.00)`);  // transparent edge
+    body.addColorStop(0.00, `rgba(${bR},${bG},${bB},1.00)`);  // washed bright center
+    body.addColorStop(0.08, `rgba(${bR},${bG},${bB},1.00)`);  // hold brightness
+    body.addColorStop(0.18, `rgba(${mR},${mG},${mB},1.00)`);  // transition mid-bright
+    body.addColorStop(0.28, `rgba(${R},${G},${B},0.95)`);     // pure color, solid body
+    body.addColorStop(0.40, `rgba(${R},${G},${B},0.60)`);     // edge of body
+    body.addColorStop(0.55, `rgba(${R},${G},${B},0.28)`);     // glow bloom begins
+    body.addColorStop(0.72, `rgba(${R},${G},${B},0.10)`);     // wide soft glow
+    body.addColorStop(0.88, `rgba(${R},${G},${B},0.03)`);     // faint outer diffuse
+    body.addColorStop(1.00, `rgba(${R},${G},${B},0.00)`);     // transparent edge
 
     ctx.fillStyle = body;
-    ctx.fillRect(0, 0, size, size);
-
-    // ── Top-left specular highlight (3-D sphere feel) ─────────────────────
-    const hR = Math.min(255, R + 90);
-    const hG = Math.min(255, G + 90);
-    const hB = Math.min(255, B + 90);
-    const hx = center * 0.70;
-    const hy = center * 0.66;
-    const hr = center * 0.26;
-    const hl = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
-    hl.addColorStop(0.0, `rgba(${hR},${hG},${hB},0.60)`);
-    hl.addColorStop(1.0, `rgba(${hR},${hG},${hB},0.00)`);
-
-    ctx.fillStyle = hl;
     ctx.fillRect(0, 0, size, size);
 
     return PIXI.Texture.from(canvas);
