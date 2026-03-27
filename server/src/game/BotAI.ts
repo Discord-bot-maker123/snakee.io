@@ -419,7 +419,7 @@ export class BotAI {
         brain.boostCooldownMs = 240 + Math.random() * 260;
         brain.boostHoldUntilMs = now + BOOST_HOLD_MS;
       }
-      brain.threatHoldUntilMs = now + THREAT_HOLD_MS;
+      brain.threatHoldUntilMs = now + (brain.personality === "aggressive" ? 600 : THREAT_HOLD_MS);
       brain.escapeLoopDirection = this.pickEscapeLoopDirection(head, null, brain.escapeLoopDirection);
       const activeProxBoost = proxBoost || boostHoldActive;
       bot.setBotTarget(proxAngle, activeProxBoost);
@@ -1009,8 +1009,9 @@ export class BotAI {
       if (snake.length >= myLength * preyLengthThreshold) {
         continue;
       }
-      // Human players can be detected from further away (unless this bot only hunts bots)
-      const effectiveRadius = (!snake.isBot && huntPreference !== "bot") ? chaseRadius * 1.65 : chaseRadius;
+      // Aggressive bots spot human players from further; defensive already has a short chaseRadius
+      const humanBoost = (personality === "aggressive" && !snake.isBot && huntPreference !== "bot") ? 1.65 : 1.0;
+      const effectiveRadius = chaseRadius * humanBoost;
       const dist = this.distance(head, snake.head);
       if (dist > effectiveRadius) {
         continue;
