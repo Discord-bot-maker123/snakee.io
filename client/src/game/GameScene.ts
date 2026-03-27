@@ -357,23 +357,24 @@ export class GameScene {
         const cx = x;
         const cy = y + yOffset;
         const distSq = cx * cx + cy * cy;
-        if (distSq > (ARENA_RADIUS + hexRadius * 2) * (ARENA_RADIUS + hexRadius * 2)) {
+        // Keep hex tiles visually inside the true kill boundary to avoid "dies before wall" feel.
+        if (distSq > (ARENA_RADIUS - hexRadius * 0.35) * (ARENA_RADIUS - hexRadius * 0.35)) {
           continue;
         }
 
-        // 1. Deep shadow/grout layer (slightly offset down-right)
-        graphics.beginFill(0x040609, 0.95);
-        this.drawHexagon(graphics, cx + 2, cy + 2, hexRadius * 0.92);
+        // 1. Grout — slightly lighter than background so hex edges read as subtle grid lines
+        graphics.beginFill(0x0e141d, 1);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.94);
         graphics.endFill();
 
-        // 2. Main tile body (matching the dark blue-grey in image)
-        graphics.beginFill(0x0d121a, 1);
+        // 2. Main tile body — dark charcoal matching snake.io hex floor
+        graphics.beginFill(0x090c12, 1);
         this.drawHexagon(graphics, cx, cy, hexRadius * 0.88);
         graphics.endFill();
 
-        // 3. Digital Pulse/Highlight (High-tech cyan/blue tint)
-        graphics.beginFill(0x1a2b3c, 0.4);
-        this.drawHexagon(graphics, cx - 1, cy - 1, hexRadius * 0.78);
+        // 3. Subtle blue-tint inner face (very slight, avoids flat look)
+        graphics.beginFill(0x111e2e, 0.30);
+        this.drawHexagon(graphics, cx - 1, cy - 1, hexRadius * 0.76);
         graphics.endFill();
       }
       rowIndex += 1;

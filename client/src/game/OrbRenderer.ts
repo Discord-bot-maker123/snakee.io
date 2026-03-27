@@ -77,29 +77,33 @@ export class OrbRenderer {
   }
 
   private createOrbTexture(renderer: PIXI.Renderer): PIXI.Texture {
-    /* changed by gemini */
     const graphics = new PIXI.Graphics();
-    
-    // Very soft outer glow (halo)
-    graphics.beginFill(0xffffff, 0.15);
-    graphics.drawCircle(0, 0, 16);
-    graphics.endFill();
-    
-    // Soft inner glow
-    graphics.beginFill(0xffffff, 0.4);
-    graphics.drawCircle(0, 0, 10);
-    graphics.endFill();
-    
-    // Dense core
-    graphics.beginFill(0xffffff, 0.9);
-    graphics.drawCircle(0, 0, 5);
+
+    // Wide soft halo — gives orbs their glowing "floating" feel
+    graphics.beginFill(0xffffff, 0.06);
+    graphics.drawCircle(0, 0, 24);
     graphics.endFill();
 
-    // Brightest center point
-    graphics.beginFill(0xffffff, 1);
-    graphics.drawCircle(0, 0, 2);
+    // Outer glow ring
+    graphics.beginFill(0xffffff, 0.14);
+    graphics.drawCircle(0, 0, 17);
     graphics.endFill();
-    
+
+    // Mid glow
+    graphics.beginFill(0xffffff, 0.38);
+    graphics.drawCircle(0, 0, 11);
+    graphics.endFill();
+
+    // Dense core
+    graphics.beginFill(0xffffff, 0.88);
+    graphics.drawCircle(0, 0, 5.5);
+    graphics.endFill();
+
+    // Bright centre point
+    graphics.beginFill(0xffffff, 1);
+    graphics.drawCircle(0, 0, 2.5);
+    graphics.endFill();
+
     const texture = renderer.generateTexture(graphics);
     graphics.destroy();
     return texture;
