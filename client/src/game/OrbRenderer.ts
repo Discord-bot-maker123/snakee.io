@@ -182,26 +182,28 @@ export class OrbRenderer {
   //   edge        → near-black shadow on the entire rim
   //
   // Small top-left specular dot adds gloss without making it directionally lit.
-  // Layer 1 — top-lit sphere.
+  // Layer 1 — front-facing sphere viewed from above.
   //
-  // Pass 1: Linear gradient top → bottom
-  //   north pole  → pure white  (direct overhead light)
-  //   upper-mid   → full color  (light still strong, washes color)
-  //   lower-mid   → full color  (color holds across equator)
-  //   south pole  → near-black  (back face in shadow)
+  // Pass 1: Radial fill — full color in center, dark rim all around.
+  //   The circumference is dark (shadow) so the orb reads as round, not flat.
   //
-  // Pass 2: Radial rim vignette (transparent center → dark edge)
-  //   Darkens the circumference all around so the sphere reads as round,
-  //   not as a flat disc.
+  // Pass 2: Top highlight — offset radial at upper-center fading to transparent.
+  //   Adds the bright white "north pole" cap without making the rest of the
+  //   sphere look side-viewed. Most of the face stays full color.
   private createBodyTexture(color: number, tier: number): PIXI.Texture {
     const R = (color >> 16) & 0xff;
     const G = (color >>  8) & 0xff;
     const B =  color        & 0xff;
 
-    // Dark version for shadowed bottom / south pole
-    const dR = Math.round(R * 0.18);
-    const dG = Math.round(G * 0.18);
-    const dB = Math.round(B * 0.18);
+    // Slightly lighter center color (ambient lift)
+    const lR = Math.min(255, Math.round(R + (255 - R) * 0.15));
+    const lG = Math.min(255, Math.round(G + (255 - G) * 0.15));
+    const lB = Math.min(255, Math.round(B + (255 - B) * 0.15));
+
+    // Dark version for rim shadow
+    const dR = Math.round(R * 0.16);
+    const dG = Math.round(G * 0.16);
+    const dB = Math.round(B * 0.16);
 
     const size = 128;
     const cx   = size / 2;
@@ -218,23 +220,29 @@ export class OrbRenderer {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // Pass 1 — directional top-down light
-    const linear = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
-    linear.addColorStop(0.00, `rgba(255,255,255,1.00)`);           // north pole: pure white
-    linear.addColorStop(0.18, `rgba(255,255,255,0.88)`);           // near top: still bright
-    linear.addColorStop(0.38, `rgba(${R},${G},${B},1.00)`);        // upper-mid: full color
-    linear.addColorStop(0.62, `rgba(${R},${G},${B},1.00)`);        // lower-mid: holds
-    linear.addColorStop(0.84, `rgba(${dR},${dG},${dB},1.00)`);     // lower: darkening
-    linear.addColorStop(1.00, `rgba(0,0,0,1.00)`);                 // south pole: black
-    ctx.fillStyle = linear;
+    // Pass 1 — base radial: full color center, dark at circumference edge
+    const base = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    base.addColorStop(0.00, `rgba(${lR},${lG},${lB},1.00)`); // center: slight lift
+    base.addColorStop(0.55, `rgba(${R},${G},${B},1.00)`);    // full color
+    base.addColorStop(0.78, `rgba(${R},${G},${B},1.00)`);    // holds wide
+    base.addColorStop(0.90, `rgba(${dR},${dG},${dB},1.00)`); // shadow ring starts
+    base.addColorStop(0.97, `rgba(2,2,4,1.00)`);             // near-black
+    base.addColorStop(1.00, `rgba(0,0,0,1.00)`);             // black edge
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, size, size);
 
-    // Pass 2 — radial rim vignette: darkens the circumference edge uniformly
-    const vignette = ctx.createRadialGradient(cx, cy, r * 0.50, cx, cy, r);
-    vignette.addColorStop(0.00, `rgba(0,0,0,0.00)`);
-    vignette.addColorStop(0.65, `rgba(0,0,0,0.18)`);
-    vignette.addColorStop(1.00, `rgba(0,0,0,0.78)`);
-    ctx.fillStyle = vignette;
+    // Pass 2 — top highlight: offset radial near the upper-center of the disc
+    // cx, cy - r*0.35 places the highlight center above the geometric center
+    // so the bright cap sits at the top without spanning the whole face.
+    const hx = cx;
+    const hy = cy - r * 0.35;
+    const hr = r * (tier === 2 ? 0.70 : 0.58); // death orbs get a bigger highlight
+    const highlight = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+    highlight.addColorStop(0.00, `rgba(255,255,255,0.92)`); // bright white peak
+    highlight.addColorStop(0.30, `rgba(255,255,255,0.55)`);
+    highlight.addColorStop(0.65, `rgba(255,255,255,0.12)`);
+    highlight.addColorStop(1.00, `rgba(255,255,255,0.00)`); // fades to nothing
+    ctx.fillStyle = highlight;
     ctx.fillRect(0, 0, size, size);
 
     ctx.restore();
