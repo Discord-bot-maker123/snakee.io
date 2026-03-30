@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../scripts/free-port.mjs 9001",
     "dev": "tsx watch src/index.ts",
     "build": "npm --prefix ../shared run build && tsc -p tsconfig.json",
     "start": "npm --prefix ../shared run build && node dist/index.js"

@@ -36,7 +36,8 @@ export class SocketClient {
       }
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.port === "5173" ? `${window.location.hostname}:9001` : window.location.host;
+      const devPorts = ["5173", "5174", "5175", "5176", "5177"];
+      const host = devPorts.includes(window.location.port) ? `${window.location.hostname}:9001` : window.location.host;
       return new URL(`${protocol}//${host}`);
     })();
 

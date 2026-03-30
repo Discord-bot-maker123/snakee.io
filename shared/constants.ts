@@ -1,9 +1,9 @@
-export const ARENA_RADIUS = 3000;
+export const ARENA_RADIUS = 3600;
 export const SERVER_TICK_RATE = 20;
 export const CLIENT_RENDER_FPS = 60;
 export const INPUT_SEND_RATE = 30;
 
-export const MAX_ORBS = 1500;
+export const MAX_ORBS = 2200;
 export const ORB_MIN_SIZE = 4;
 export const ORB_PULSE_SPEED = 1.8;
 
@@ -24,8 +24,8 @@ export const SNAKE_BODY_RADIUS = 10;
 
 export const BOOST_MULTIPLIER = 1.6;
 export const BOOST_ENERGY_MAX = 100;
-export const BOOST_ENERGY_DRAIN_PER_SEC = 40;
-export const BOOST_ENERGY_REGEN_PER_SEC = 22;
+export const BOOST_ENERGY_DRAIN_PER_SEC = 34;
+export const BOOST_ENERGY_REGEN_PER_SEC = 26;
 export const BOOST_ORB_DROP_INTERVAL_SEC = 1;
 export const BOOST_START_MIN_SEGMENTS = 6;
 export const BOT_BOOST_START_MIN_SEGMENTS = 3;

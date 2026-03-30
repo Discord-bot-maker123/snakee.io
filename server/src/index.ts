@@ -454,6 +454,15 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
+server.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EADDRINUSE") {
+    // eslint-disable-next-line no-console
+    console.error(`[server] Port ${PORT} is already in use. Stop the previous dev server process, then restart.`);
+    process.exit(1);
+  }
+  throw error;
+});
+
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`snakee.io matchmaking server running on ws://localhost:${PORT}`);

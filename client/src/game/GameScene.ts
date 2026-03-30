@@ -73,6 +73,8 @@ export class GameScene {
 
   private ambienceTime: number;
 
+  private mouseScreen: Vec2;
+
   public static async create(root: HTMLElement): Promise<GameScene> {
     const app = new PIXI.Application();
     await app.init({
@@ -119,6 +121,11 @@ export class GameScene {
     this.current = { snakes: new Map<string, SnakeState>(), orbs: new Map<string, OrbState>(), leaderboard: [], time: 0 };
     this.snapshots = [];
     this.ambienceTime = 0;
+    this.mouseScreen = { x: 0, y: 0 };
+
+    window.addEventListener("mousemove", (e: MouseEvent) => {
+      this.mouseScreen = { x: e.clientX, y: e.clientY };
+    });
 
     this.app.ticker.add((ticker: PIXI.Ticker) => {
       this.render(ticker.deltaMS);
@@ -217,7 +224,8 @@ export class GameScene {
     const renderedSnakes = this.buildRenderedSnakes(interpolation.from, interpolation.to, interpolation.alpha);
     const renderedOrbs: OrbState[] = Array.from(interpolation.to.orbs.values());
 
-    this.snakeRenderer.render(renderedSnakes);
+    const mouseWorld = this.camera.screenToWorld(this.mouseScreen);
+    this.snakeRenderer.render(renderedSnakes, this.playerId ?? undefined, mouseWorld);
     this.orbRenderer.render(renderedOrbs, deltaMs);
 
     const renderedById = new Map<string, SnakeState>(renderedSnakes.map((snake: SnakeState) => [snake.id, snake]));
@@ -343,9 +351,8 @@ export class GameScene {
   }
 
   private createBackgroundLayer(): PIXI.Graphics {
-    /* changed by gemini */
     const graphics = new PIXI.Graphics();
-    const hexRadius = 42;
+    const hexRadius = 48; // Slightly larger for better clarity
     // Flat-topped hex math
     const stepX = hexRadius * 1.5;
     const stepY = Math.sqrt(3) * hexRadius;
@@ -357,14 +364,20 @@ export class GameScene {
         const cx = x;
         const cy = y + yOffset;
         const distSq = cx * cx + cy * cy;
-        // Keep hex tiles visually inside the true kill boundary to avoid "dies before wall" feel.
-        if (distSq > (ARENA_RADIUS - hexRadius * 0.35) * (ARENA_RADIUS - hexRadius * 0.35)) {
+        
+        if (distSq > (ARENA_RADIUS) * (ARENA_RADIUS)) {
           continue;
         }
 
-        // Single dark tile — background (0x05070a) shows through the gap as the grout
-        graphics.beginFill(0x0d1119, 1);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.87);
+        // Slither.io style: Dark tiles with a very thin, slightly brighter grout/edge
+        // Base tile
+        graphics.beginFill(0x0c1016, 1);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.96);
+        graphics.endFill();
+
+        // Subtle inner highlight/bevel for 3D feel
+        graphics.beginFill(0x131922, 0.4);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.90);
         graphics.endFill();
       }
       rowIndex += 1;

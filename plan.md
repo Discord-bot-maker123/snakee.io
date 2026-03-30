@@ -526,6 +526,61 @@ Build: ✅
 
 ---
 
+## Session 9 — Bug Fixes + snake.io Realignment + Orb Glow Restore (2026-03-27)
+
+### Bug fixes (`server/src/game/BotAI.ts`) — 4 bugs from session 3 audit
+All fixed in commit `5c7b06d`:
+- **preyId race** (Medium): `selectPreyTarget` now pre-called and `brain.preyId` updated before `computeProximityEscape` — eliminates 1-tick stale lag on target switch. Pre-computed prey passed into `planLightModelAction` to avoid double call.
+- **Coil state leak** (Low): `coilRadius` and `coilDirection` explicitly reset to defaults on coil exit.
+- **Steering noise in recovery** (Low): `applySteeringNoise()` now skipped during `trapped_survival` and `body_avoid` modes.
+- **Coil pivot jitter** (Low): pivot lerps toward prey head at 6×/sec instead of snapping.
+
+### Bot behaviour realignment — snake.io reference research
+User corrected reference game from slither.io → **snake.io** (Supersolid). Research findings:
+- snake.io bots are predominantly **passive orb collectors** — rarely hunt
+- Hunting is **opportunistic only** toward small nearby snakes
+- **No coiling** — bots do simple looping movement, not spiral traps
+- All bots feel **uniform** — no distinct personality tiers
+- Majority of opponents in snake.io are bots (60–90% of lobby)
+
+### Bot behaviour changes (`server/src/game/BotAI.ts`) — commit `5c7b06d`
+Six changes to align with snake.io feel:
+
+| Change | Before | After |
+|--------|--------|-------|
+| `MIN_HUNT_SEGMENTS` | 3 (hunt from spawn) | 10 (grow first, then hunt) |
+| Personality distribution | 45/45/10 | 25/35/40 (aggressive/defensive/passive) |
+| Defensive threat threshold | 0.85 (flee same-size) | 1.0 (flee only ≥ own size) |
+| Coil trap | aggressive + defensive | aggressive only |
+| Passive bot behavior | random ±90° turns | smooth orb collection (turn removed) |
+| Hunt preference (aggressive) | 50/50 human/bot | 60/40 human/bot |
+| Hunt preference (defensive) | 30% bot / 70% any | 20% bot / 80% any |
+
+All changes verified by parallel audit agent — 7/7 checks passed, no side-effects.
+Build: `npx tsc --noEmit` ✅. Committed and pushed.
+
+### Orb renderer — glow removed then restored (`client/src/game/OrbRenderer.ts`)
+- Briefly removed glow (changed blendMode `"add"` → `"normal"`, stripped gradient stops, 256px → 128px texture)
+- Restored after user confirmed the additive-blending + radial gradient approach is correct — matches how the real game works (WebGL + additive blend + spherical gradient texture + GPU particle system)
+- **Current orb render pipeline**: HTML5 Canvas bakes gradient texture once per color → `PIXI.Texture.from(canvas)` → uploaded to GPU → PIXI ParticleContainer renders all instances via WebGL with additive blend
+
+### Current state (end of session 9)
+Latest commits:
+- `823838d` — Implement 'Cleaner' orb visuals with three-layer gradient structure
+- `d390f8e` — Tune orb visuals: brighter washed center, wider glow, smaller body ratio
+- `818639c` — Replicate slither.io orbs: per-color baked textures + additive blend
+- `5c7b06d` — Rebalance bot behaviour to match real slither.io feel (includes bug fixes)
+
+OrbRenderer.ts current texture: 256px, 7-stop gradient (white core → colored body → additive glow bloom), `blendMode = "add"`, scale `(orb.size / 10) × 0.42`.
+
+### Known limitations
+- No persistence / accounts — scores are session-only
+- Passive bots (40%) never hunt — by design
+- Bot-hunters may grow large unchecked (no-one targets them)
+- Orb drift is client-side cosmetic only
+
+---
+
 ## Files Most Likely to Need Changes
 - `server/src/game/BotAI.ts` — AI behaviour tuning
 - `server/src/game/World.ts` — game loop, bot spawn/respawn, context assembly
@@ -537,10 +592,184 @@ Build: ✅
 ## Recent Commits
 | Hash | Message |
 |------|---------|
+| `823838d` | Implement 'Cleaner' orb visuals with three-layer gradient structure |
+| `d390f8e` | Tune orb visuals: brighter washed center, wider glow, smaller body ratio |
+| `818639c` | Replicate slither.io orbs: per-color baked textures + additive blend |
+| `8010886` | Add additive blend mode to orb glow and core layers |
+| `4ce6af1` | Fix orb white-core: two-layer glow + untinted white center |
+| `5c7b06d` | Rebalance bot behaviour to match snake.io feel + 4 bug fixes |
 | `16125fb` | Tighten bot anchor to human + boost more often |
-| `904284c` | Fix two issues flagged by Codex review |
-| `e588c16` | Restore slither.io bot personality adherence |
-| `65ad98a` | Fix hex grid darkness and orb glow/drift |
-| `f3947fb` | Visual overhaul: 3D snake segments, 12 themes, better orb glow |
-| `5c7b06d` | Rebalance bot behaviour to match real slither.io feel |
-| `f61d5ed` | Add hunt preference system: bots now split between hunting humans and other bots |
+
+---
+
+## OrbRenderer Rewrite — Session 2026-03-28
+
+### Problem
+Orbs appeared as flat neon disks rather than glowing 3D spheres. Root cause: **every `ParticleContainer` used `blendMode = "add"`**, including the body layer. Additive blending only adds light — it never renders an opaque surface. On the dark `#05070a` background this produced faint colored rings with no volume.
+
+### Architecture change: one layer → two layers
+
+**Before:**
+```
+orbLayer
+  └── containerCache[color]  ← blendMode: "add"  (body + glow combined, flat disk)
+```
+
+**After:**
+```
+orbLayer
+  ├── bodyContainer[color]   ← blendMode: "normal" (default) — opaque sphere
+  └── glowContainer[color]   ← blendMode: "add" — wide colored bloom on top
+```
+
+### OrbSprite type change
+
+| Before | After |
+|--------|-------|
+| `particle: PIXI.Particle` | `body: PIXI.Particle` + `glow: PIXI.Particle` |
+| single `textureCache` | `bodyTextureCache` + `glowTextureCache` |
+| single `containerCache` | `bodyContainerCache` + `glowContainerCache` |
+
+### Texture design
+
+#### Body texture (`createBodyTexture`) — 128×128 canvas, normal blend
+Produces a 3D sphere illusion via two canvas passes:
+
+| Pass | Technique | Effect |
+|------|-----------|--------|
+| 1 — Sphere shading | `createRadialGradient(cx,cy → cx,cy)`: lighter color at center (40% toward white) → full color at 45% → dark rim at 82% (30% brightness) → transparent edge | Ambient shading that reads as a round volume |
+| 2 — Specular highlight | `createRadialGradient` centered at `(cx − r×0.28, cy − r×0.28)` (top-left quadrant), `rgba(255,255,255,0.92)` → transparent over `r×0.48` radius | Offset white hotspot showing surface curvature |
+
+#### Glow texture (`createGlowTexture`) — 128×128 canvas, additive blend
+Pure colored bloom: `rgba(R,G,B,0.50)` at center → `0.40` at 30% → `0.20` at 60% → `0.06` at 85% → transparent. No white center (body handles that).
+
+### Scale changes
+
+| Field | Before | After |
+|-------|--------|-------|
+| Canvas size | 256×256 | 128×128 |
+| `baseScale` multiplier | `0.42` | `0.08` |
+| Body scale | `baseScale × pulse` | `baseScale × bodyPulse` |
+| Glow scale | n/a | `baseScale × 3.5 × glowPulse` |
+
+The 256px canvas with `baseScale = 0.42` produced orbs 5–8× too large. Reducing to 128px + `0.08` brings them in line with reference screenshot proportions.
+
+### Animation changes
+
+| Animation | Before | After |
+|-----------|--------|-------|
+| Pulse amplitude | Tier-dependent (6–18%) | Uniform 7% body / 5% glow |
+| Pulse speed | Tier-dependent (1.8–2.8) | Uniform 1.6 (both layers) |
+| Glow phase lag | n/a | `+0.4 rad` — glow breathes after body |
+| Drift radius | Tier-dependent (3.5/5.5/9 px) | Tier-dependent (3/5/8 px) |
+| Alpha range | `0.88–1.00` (tier-dependent) | Uniform `0.82–0.98` body / `×0.85` glow |
+| Reflection particle | Third orbiting particle per orb | **Removed** |
+
+### Z-ordering (replacing removed `syncZOrder()`)
+`this.layer.sortableChildren = true` set in constructor. Body containers get `zIndex = 0`, glow containers get `zIndex = 1`. Containers are added to `this.layer` immediately in their factory methods — no deferred re-ordering needed.
+
+### Files changed
+- `client/src/game/OrbRenderer.ts` — complete rewrite (described above)
+- No changes to `GameScene.ts`, `shared/`, or server code — public API (`new OrbRenderer(layer)` + `render(orbs, deltaMs)`) is unchanged.
+
+---
+
+## SnakeRenderer Visual Overhaul — Session 2026-03-28
+
+### Goal
+Match slither.io snake aesthetics: smooth continuous tube with segmentation marks, no per-segment ball shading.
+
+### Changes to `client/src/game/SnakeRenderer.ts`
+
+#### Body rendering (4 passes)
+| Pass | What | Detail |
+|------|------|--------|
+| 1 | Base body circles | Single `theme.primary` color — no alternating stripes |
+| 2 | Top highlight | White ellipse at `(seg.x, seg.y − r×0.22)`, semi-axes `r×0.60 / r×0.32`, alpha 0.12 — very subtle |
+| 3 | Segment edge arcs | Curved arc at front rim of each circle: `radius=r×0.96`, half-span `±79°`, `2px` black at alpha 0.52, counterclockwise so arc curves toward head |
+| 4 | Boost glow | White fill circle, radius `r×0.45`, alpha 0.22 |
+
+#### Eyes
+- **White eyeballs** anchored to `travelAngle` (neck → head direction) — never move
+- **Black pupils** track the mouse in world space for ALL snakes — `pupilAngle = atan2(mouse.y − head.y, mouse.x − head.x)`
+- Pupil offset clamped to `eyeSize × 0.32` so pupil stays inside white circle
+- Eye shine follows pupil position
+
+#### Changes to `client/src/game/Camera.ts`
+Added `screenToWorld(screen: Vec2): Vec2` — inverse of existing `worldToScreen`.
+
+#### Changes to `client/src/game/GameScene.ts`
+- Tracks `mouseScreen: Vec2` via `window.addEventListener("mousemove")`
+- Each render frame: converts `mouseScreen` → `mouseWorld` via `camera.screenToWorld()`
+- Passes `mouseWorld` to `snakeRenderer.render(snakes, playerId, mouseWorld)`
+
+#### Changes to `client/src/net/Socket.ts`
+Fixed dev-port detection: hardcoded check for `"5173"` → checks array `["5173","5174","5175","5176","5177"]` so the WebSocket connects to port 9001 even when Vite picks a fallback port.
+
+---
+
+## Session 10 — Eye Dynamics, Visual Overhaul, Snake Physics Rewrite (2026-03-28)
+
+### 1. Bot eye direction fix (`client/src/game/SnakeRenderer.ts`)
+
+**Problem**: All snakes (bots included) had pupils that tracked the human player's mouse position in world space.
+
+**Fix** (one line, `render()` loop):
+```typescript
+// Before
+this.drawSnake(display, snake, mouseWorld);
+// After
+this.drawSnake(display, snake, snake.id === playerId ? mouseWorld : undefined);
+```
+Bots receive `undefined` as `lookTarget`, so their `pupilAngle` falls back to `travelAngle` — pupils always face the direction the bot is moving. The human player's snake is unchanged.
+
+---
+
+### 2. Snake visual overhaul — match slither.io reference screenshot (`client/src/game/SnakeRenderer.ts`)
+
+**Goal**: Match the visual appearance of the reference slither.io screenshot: smooth glossy tube body, full-width ring bands, large clean eyes.
+
+#### Theme colours updated
+All 12 themes updated to vivid saturated values matching reference image:
+`vivid blue`, `vivid green`, `vivid red`, `vivid purple`, `vivid pink`, `vivid yellow`, `teal`, `orange`, `lime`, `magenta`, `cyan`, `salmon`.
+
+#### Body rendering redesign (4 passes)
+
+| Pass | What | Detail |
+|------|------|--------|
+| 1 | Base body circles | Solid `theme.primary` colour |
+| 2 | Full-width ring bands | `lineStyle(1.6, black, 0.28)`, arc from right-perp to left-perp through the forward face (`halfSpan = π/2`) — spans the FULL width of the snake, one ring per segment boundary |
+| 3 | Cylindrical top highlight | Two-layer white ellipse: outer `(r×0.76 / r×0.46, alpha 0.34)` + inner gloss peak `(r×0.38 / r×0.20, alpha 0.22)` — gives strong 3D tube look |
+| 4 | Boost glow | Unchanged |
+
+**Key change from previous**: Ring arcs now use `halfSpan = π/2` (was `π×0.44`) so they span the full snake width instead of just the front face. Highlight alpha raised from 0.12 → 0.34 and is now two-layer.
+
+#### Eyes
+- `eyeSize`: `headRadius × 0.44` (was `0.40`)
+- `pupilSize`: `eyeSize × 0.62` (was `0.52`)
+- `eyeOffset`: `headRadius × 0.52` (was `0.48`)
+- `pupilTravel`: `eyeSize × 0.22` (was `0.32`) — pupils stay deeper inside white circle
+- **Shine dots removed** — clean solid black pupils matching reference
+
+---
+
+### 3. Snake body physics rewrite — path-following (`server/src/game/Snake.ts`)
+
+**Problem**: When a snake coiled tightly in one place, back segments froze. Root cause: the chain constraint `t = max(0, (dist − SEGMENT_SPACING) / dist)` produces `t = 0` whenever `dist ≤ SEGMENT_SPACING`. Once segments pack to SEGMENT_SPACING spacing inside a coil, they have zero pull force and stop moving entirely. This is a fundamental limitation of the pull-only chain for self-intersecting paths.
+
+**Fix**: Replaced chain constraint with **path-following**.
+
+#### How it works
+- `headPath: { x, y }[]` — ring buffer of head positions, index 0 = most recent
+- Each `update()` tick: prepend new head position to `headPath`
+- Each body segment `i` is placed at exact arc-distance `i × SEGMENT_SPACING` along `headPath`
+- Walk uses a single `pathIdx / cumDist` cursor shared across all segments → O(P) total per tick (not O(N×P))
+- Path is trimmed each tick to `segments.length × SEGMENT_SPACING + 2×SEGMENT_SPACING` to bound memory
+
+#### Initialisation
+`headPath` is pre-filled in the constructor as a straight line behind the spawn point (1-unit steps, length `(SNAKE_START_LENGTH+1)×SEGMENT_SPACING + 10`). Segments have a valid path from tick 0 with no warm-up period.
+
+#### Result
+During a tight coil, every segment always follows the exact path the head traced — they can never freeze. The tail naturally flows through the coil with delay proportional to its distance from the head.
+
+Build: `npm run build --workspace server` ✅

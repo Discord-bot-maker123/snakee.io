@@ -11,6 +11,7 @@ export type SnakeState = {
   color: number;
   score: number;
   alive: boolean;
+  boosting: boolean;
   segments: SnakeSegment[];
 };
 

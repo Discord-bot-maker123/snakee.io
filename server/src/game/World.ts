@@ -19,7 +19,7 @@ type TickResult = {
   deaths: DeathEvent[];
 };
 
-const MIN_ACTIVE_SNAKES = 6;
+const MIN_ACTIVE_SNAKES = 10;
 const BOT_ORB_VISION_RADIUS = 1200;
 const ORB_GRID_CELL_SIZE = 240;
 
@@ -420,26 +420,29 @@ export class World {
 
     if (!isBot && alive.length > 0) {
       const anchorSource = bots.length > 0 ? bots[Math.floor(Math.random() * bots.length)] : alive[Math.floor(Math.random() * alive.length)];
-      return this.spawnNear(anchorSource.headPosition(), 260, 720);
+      return this.spawnNear(anchorSource.headPosition(), 340, 900);
     }
 
     if (isBot && humans.length > 0) {
       const anchorSource = humans[Math.floor(Math.random() * humans.length)];
-      return this.spawnNear(anchorSource.headPosition(), 320, 900);
+      return this.spawnNear(anchorSource.headPosition(), 520, 1200);
     }
 
     return this.randomSpawn();
   }
 
   private spawnNear(anchor: Vec2, minDistance: number, maxDistance: number): Vec2 {
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 18; i += 1) {
       const distance = minDistance + Math.random() * (maxDistance - minDistance);
       const angle = Math.random() * Math.PI * 2;
       const candidate = {
         x: anchor.x + Math.cos(angle) * distance,
         y: anchor.y + Math.sin(angle) * distance
       };
-      if (candidate.x * candidate.x + candidate.y * candidate.y < (ARENA_RADIUS - 120) * (ARENA_RADIUS - 120)) {
+      if (
+        candidate.x * candidate.x + candidate.y * candidate.y < (ARENA_RADIUS - 120) * (ARENA_RADIUS - 120) &&
+        this.isSpawnSafe(candidate, 210)
+      ) {
         return candidate;
       }
     }
@@ -447,11 +450,38 @@ export class World {
   }
 
   private randomSpawn(): Vec2 {
-    const radius = Math.sqrt(Math.random()) * (ARENA_RADIUS * 0.8);
-    const angle = Math.random() * Math.PI * 2;
+    for (let i = 0; i < 24; i += 1) {
+      const radius = Math.sqrt(Math.random()) * (ARENA_RADIUS * 0.8);
+      const angle = Math.random() * Math.PI * 2;
+      const candidate = {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius
+      };
+      if (this.isSpawnSafe(candidate, 210)) {
+        return candidate;
+      }
+    }
+    const fallbackRadius = Math.sqrt(Math.random()) * (ARENA_RADIUS * 0.75);
+    const fallbackAngle = Math.random() * Math.PI * 2;
     return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius
+      x: Math.cos(fallbackAngle) * fallbackRadius,
+      y: Math.sin(fallbackAngle) * fallbackRadius
     };
+  }
+
+  private isSpawnSafe(point: Vec2, minHeadDistance: number): boolean {
+    const minDistSq = minHeadDistance * minHeadDistance;
+    for (const snake of this.snakes.values()) {
+      if (!snake.alive) {
+        continue;
+      }
+      const head = snake.headPosition();
+      const dx = point.x - head.x;
+      const dy = point.y - head.y;
+      if (dx * dx + dy * dy < minDistSq) {
+        return false;
+      }
+    }
+    return true;
   }
 }

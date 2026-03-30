@@ -40,6 +40,9 @@ export class Snake {
 
   private boostingActive: boolean;
 
+  // Path-following: history of head positions, index 0 = most recent
+  private readonly headPath: { x: number; y: number }[];
+
   public constructor(id: string, name: string, color: number, spawn: Vec2, isBot: boolean) {
     this.id = id;
     this.name = name;
@@ -54,11 +57,22 @@ export class Snake {
     this.lastInputSeq = -1;
     this.segments = [];
     this.boostingActive = false;
+    this.headPath = [];
 
     for (let i = 0; i < SNAKE_START_LENGTH; i += 1) {
       this.segments.push({
         x: spawn.x - Math.cos(this.angle) * i * SEGMENT_SPACING,
         y: spawn.y - Math.sin(this.angle) * i * SEGMENT_SPACING
+      });
+    }
+
+    // Pre-fill path history as a straight line behind the spawn so body
+    // segments have a valid path from tick 0 without any warm-up period.
+    const initLen = (SNAKE_START_LENGTH + 1) * SEGMENT_SPACING + 10;
+    for (let d = 0; d <= initLen; d += 1) {
+      this.headPath.push({
+        x: spawn.x - Math.cos(this.angle) * d,
+        y: spawn.y - Math.sin(this.angle) * d
       });
     }
   }
@@ -93,19 +107,61 @@ export class Snake {
       this.energy = Math.min(BOOST_ENERGY_MAX, this.energy + BOOST_ENERGY_REGEN_PER_SEC * deltaSeconds);
     }
 
+    // Move head
     const head = this.segments[0];
     head.x += Math.cos(this.angle) * speed * deltaSeconds;
     head.y += Math.sin(this.angle) * speed * deltaSeconds;
 
+    // Prepend new head position to the path history
+    this.headPath.unshift({ x: head.x, y: head.y });
+
+    // Place every body segment at its exact arc-distance along the path.
+    // pathIdx/cumDist carry forward across segments so the total walk is O(P)
+    // rather than O(N*P).
+    let pathIdx = 0;
+    let cumDist = 0;
+
     for (let i = 1; i < this.segments.length; i += 1) {
-      const prev = this.segments[i - 1];
-      const current = this.segments[i];
-      const dx = prev.x - current.x;
-      const dy = prev.y - current.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const t = Math.max(0, (dist - SEGMENT_SPACING) / dist);
-      current.x += dx * t;
-      current.y += dy * t;
+      const targetDist = i * SEGMENT_SPACING;
+      let placed = false;
+
+      while (pathIdx + 1 < this.headPath.length) {
+        const dx = this.headPath[pathIdx + 1].x - this.headPath[pathIdx].x;
+        const dy = this.headPath[pathIdx + 1].y - this.headPath[pathIdx].y;
+        const segDist = Math.sqrt(dx * dx + dy * dy);
+        const nextCumDist = cumDist + segDist;
+
+        if (nextCumDist >= targetDist) {
+          const t = segDist > 0 ? (targetDist - cumDist) / segDist : 0;
+          this.segments[i].x = this.headPath[pathIdx].x + t * dx;
+          this.segments[i].y = this.headPath[pathIdx].y + t * dy;
+          placed = true;
+          break;
+        }
+
+        cumDist = nextCumDist;
+        pathIdx += 1;
+      }
+
+      if (!placed) {
+        // Path ran out (snake just grew) — pin to the oldest known point
+        const last = this.headPath[this.headPath.length - 1];
+        this.segments[i].x = last.x;
+        this.segments[i].y = last.y;
+      }
+    }
+
+    // Trim path: drop entries that are further back than any segment needs
+    const maxPathDist = this.segments.length * SEGMENT_SPACING + SEGMENT_SPACING * 2;
+    let trimDist = 0;
+    for (let j = 0; j + 1 < this.headPath.length; j += 1) {
+      const dx = this.headPath[j + 1].x - this.headPath[j].x;
+      const dy = this.headPath[j + 1].y - this.headPath[j].y;
+      trimDist += Math.sqrt(dx * dx + dy * dy);
+      if (trimDist > maxPathDist) {
+        this.headPath.length = j + 2;
+        break;
+      }
     }
   }
 
@@ -178,6 +234,7 @@ export class Snake {
       color: this.color,
       score: this.score,
       alive: this.alive,
+      boosting: this.boostingActive,
       segments: this.segments.map((segment: SnakeSegment) => ({ ...segment }))
     };
   }
