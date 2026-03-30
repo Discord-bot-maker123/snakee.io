@@ -182,20 +182,26 @@ export class OrbRenderer {
   //   edge        → near-black shadow on the entire rim
   //
   // Small top-left specular dot adds gloss without making it directionally lit.
+  // Layer 1 — top-lit sphere.
+  //
+  // Pass 1: Linear gradient top → bottom
+  //   north pole  → pure white  (direct overhead light)
+  //   upper-mid   → full color  (light still strong, washes color)
+  //   lower-mid   → full color  (color holds across equator)
+  //   south pole  → near-black  (back face in shadow)
+  //
+  // Pass 2: Radial rim vignette (transparent center → dark edge)
+  //   Darkens the circumference all around so the sphere reads as round,
+  //   not as a flat disc.
   private createBodyTexture(color: number, tier: number): PIXI.Texture {
     const R = (color >> 16) & 0xff;
     const G = (color >>  8) & 0xff;
     const B =  color        & 0xff;
 
-    // Center: slightly lighter (20% toward white) — subtle, not directional
-    const lR = Math.round(R + (255 - R) * 0.22);
-    const lG = Math.round(G + (255 - G) * 0.22);
-    const lB = Math.round(B + (255 - B) * 0.22);
-
-    // Rim shadow: compress toward black for the circumference dark ring
-    const dR = Math.round(R * 0.15);
-    const dG = Math.round(G * 0.15);
-    const dB = Math.round(B * 0.15);
+    // Dark version for shadowed bottom / south pole
+    const dR = Math.round(R * 0.18);
+    const dG = Math.round(G * 0.18);
+    const dB = Math.round(B * 0.18);
 
     const size = 128;
     const cx   = size / 2;
@@ -212,27 +218,23 @@ export class OrbRenderer {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // Pass 1 — radial vignette: lighter center → full color → dark rim all around
-    const radial = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    radial.addColorStop(0.00, `rgba(${lR},${lG},${lB},1.00)`); // bright center
-    radial.addColorStop(0.40, `rgba(${R},${G},${B},1.00)`);    // full color mid
-    radial.addColorStop(0.72, `rgba(${R},${G},${B},1.00)`);    // full color holds wide
-    radial.addColorStop(0.86, `rgba(${dR},${dG},${dB},1.00)`); // shadow ring
-    radial.addColorStop(0.95, `rgba(2,2,5,1.00)`);              // near-black circumference
-    radial.addColorStop(1.00, `rgba(0,0,0,1.00)`);              // black edge
-    ctx.fillStyle = radial;
+    // Pass 1 — directional top-down light
+    const linear = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+    linear.addColorStop(0.00, `rgba(255,255,255,1.00)`);           // north pole: pure white
+    linear.addColorStop(0.18, `rgba(255,255,255,0.88)`);           // near top: still bright
+    linear.addColorStop(0.38, `rgba(${R},${G},${B},1.00)`);        // upper-mid: full color
+    linear.addColorStop(0.62, `rgba(${R},${G},${B},1.00)`);        // lower-mid: holds
+    linear.addColorStop(0.84, `rgba(${dR},${dG},${dB},1.00)`);     // lower: darkening
+    linear.addColorStop(1.00, `rgba(0,0,0,1.00)`);                 // south pole: black
+    ctx.fillStyle = linear;
     ctx.fillRect(0, 0, size, size);
 
-    // Pass 2 — small top-left specular dot (gloss, not directional lighting)
-    const hx  = cx - r * 0.22;
-    const hy  = cy - r * 0.28;
-    const hr  = r * (tier === 2 ? 0.32 : 0.24);
-    const hpk = tier === 2 ? 0.90 : 0.80;
-    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
-    spec.addColorStop(0.00, `rgba(255,255,255,${hpk})`);
-    spec.addColorStop(0.50, `rgba(255,255,255,${tier === 2 ? 0.40 : 0.28})`);
-    spec.addColorStop(1.00, `rgba(255,255,255,0.00)`);
-    ctx.fillStyle = spec;
+    // Pass 2 — radial rim vignette: darkens the circumference edge uniformly
+    const vignette = ctx.createRadialGradient(cx, cy, r * 0.50, cx, cy, r);
+    vignette.addColorStop(0.00, `rgba(0,0,0,0.00)`);
+    vignette.addColorStop(0.65, `rgba(0,0,0,0.18)`);
+    vignette.addColorStop(1.00, `rgba(0,0,0,0.78)`);
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, size, size);
 
     ctx.restore();
