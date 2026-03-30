@@ -366,16 +366,21 @@ export class GameScene {
         const cy = y + yOffset;
         if (cx * cx + cy * cy > ARENA_RADIUS * ARENA_RADIUS) continue;
 
-        // Layer 1 — main tile body. Drawn at 87 % so the dark background
-        // (#05070a) shows through as a clear ~13 % gap between tiles.
-        graphics.beginFill(0x0d1820, 1);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.87);
+        // Layer 1 — shadow rim. Slightly brighter than the pure-black gap but
+        // darker than the tile body — creates the raised-tile depth illusion.
+        graphics.beginFill(0x0b1e28, 1);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.91);
         graphics.endFill();
 
-        // Layer 2 — subtle center lift. A slightly lighter inset hex fakes the
-        // soft depth gradient seen in the reference (center brighter → edges darker).
-        graphics.beginFill(0x172637, 0.28);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.66);
+        // Layer 2 — main tile body. Dark teal (not blue) matching the reference.
+        graphics.beginFill(0x162b35, 1);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.84);
+        graphics.endFill();
+
+        // Layer 3 — center ambient lift. Slightly lighter teal inset, fades the
+        // surface from bright-center to darker-edges giving the spherical tile feel.
+        graphics.beginFill(0x1e3c4a, 0.34);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.62);
         graphics.endFill();
       }
       rowIndex += 1;
