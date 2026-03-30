@@ -73,14 +73,21 @@ export class OrbRenderer {
         this.sprites.set(orb.id, entry);
       }
 
-      // Pulse — death orbs throb more dramatically
-      const pulseAmp   = entry.tier === 2 ? 0.14 : 0.07;
-      const pulseSpeed = entry.tier === 2 ? 2.4  : 1.6;
-      const bodyPulse  = 1 - pulseAmp + Math.sin(this.pulseTime * pulseSpeed + entry.floatSeed) * pulseAmp;
+      // sinVal in [-1, 1] drives all animation — one shared clock per orb.
+      const pulseSpeed = entry.tier === 2 ? 2.4 : 1.8;
+      const sinVal     = Math.sin(this.pulseTime * pulseSpeed + entry.floatSeed);
 
-      // Glow pulse — slightly lagged phase so bloom breathes after the body
-      const glowPulseAmp = entry.tier === 2 ? 0.10 : 0.05;
-      const glowPulse    = 1 - glowPulseAmp + Math.sin(this.pulseTime * pulseSpeed + entry.floatSeed + 0.4) * glowPulseAmp;
+      // Body: very subtle size breathe only — the glow handles brightness.
+      const scaleBreath = entry.tier === 2 ? 0.05 : 0.04;
+      const bodyPulse   = 1.0 + sinVal * scaleBreath;
+
+      // Glow alpha: sweeps a wide range so the additive bloom washes the sphere
+      // bright at peak then lets it fall back to its natural dark-edge depth.
+      //   common  → 0.12 … 0.75
+      //   death   → 0.25 … 1.00
+      const glowMin   = entry.tier === 2 ? 0.25 : 0.12;
+      const glowMax   = entry.tier === 2 ? 1.00 : 0.75;
+      const glowAlpha = glowMin + (sinVal + 1) * 0.5 * (glowMax - glowMin);
 
       // Brownian drift
       const driftRadius = entry.value >= 7 ? 8 : entry.value >= 3 ? 5 : 3;
@@ -89,25 +96,20 @@ export class OrbRenderer {
       const orbX = orb.x + dx;
       const orbY = orb.y + dy;
 
-      // Alpha breathing — death orbs stay brighter (less alpha dip)
-      const alphaBase = entry.tier === 2 ? 0.96 : 0.90;
-      const alphaAmp  = entry.tier === 2 ? 0.04 : 0.08;
-      const alpha = alphaBase + Math.sin(this.pulseTime * 1.4 + entry.floatSeed) * alphaAmp;
-
-      // Apply body
+      // Apply body — always fully opaque; depth comes from the texture shading.
       entry.body.x      = orbX;
       entry.body.y      = orbY;
       entry.body.scaleX = entry.baseScale * bodyPulse;
       entry.body.scaleY = entry.baseScale * bodyPulse;
-      entry.body.alpha  = alpha;
+      entry.body.alpha  = 1.0;
       entry.body.tint   = 0xffffff;
 
-      // Apply glow
+      // Apply glow — the wide pulse is what creates the "wash to white" effect.
       entry.glow.x      = orbX;
       entry.glow.y      = orbY;
-      entry.glow.scaleX = entry.baseScale * entry.glowMultiplier * glowPulse;
-      entry.glow.scaleY = entry.baseScale * entry.glowMultiplier * glowPulse;
-      entry.glow.alpha  = alpha * (entry.tier === 2 ? 1.0 : 0.85);
+      entry.glow.scaleX = entry.baseScale * entry.glowMultiplier * bodyPulse;
+      entry.glow.scaleY = entry.baseScale * entry.glowMultiplier * bodyPulse;
+      entry.glow.alpha  = glowAlpha;
       entry.glow.tint   = 0xffffff;
     }
 
@@ -171,57 +173,76 @@ export class OrbRenderer {
     return t;
   }
 
-  // Layer 1 — 3D sphere illusion.
-  // Base: color shading (lighter center → full color → dark rim).
-  // Specular: offset white highlight at top-left, shows surface curvature.
-  // Death orbs (tier 2): near-white center, stronger specular — looks molten.
+  // Layer 1 — top-lit 3D sphere.
+  //
+  // Vertical linear gradient clipped to a circle replicates the slither.io
+  // shading as observed:
+  //   top (0–12 %)  → pure white  (direct light from above)
+  //   upper (28 %)  → light tint  (lit upper hemisphere)
+  //   mid   (55 %)  → full color  (equator / saturated zone)
+  //   lower (78 %)  → dark color  (shadow lower hemisphere)
+  //   edge  (91 %)  → near-black  (terminator rim shadow)
+  //   bottom (100%) → black       (deepest shadow edge)
+  //
+  // A small specular hot-spot offset toward top-left adds the secondary
+  // bright reflection seen on gloss spheres.
   private createBodyTexture(color: number, tier: number): PIXI.Texture {
     const R = (color >> 16) & 0xff;
     const G = (color >>  8) & 0xff;
     const B =  color        & 0xff;
 
-    // Center brightness: death=85% toward white, common=40%
-    const centerBlend = tier === 2 ? 0.85 : 0.40;
-    const lR = Math.round(R + (255 - R) * centerBlend);
-    const lG = Math.round(G + (255 - G) * centerBlend);
-    const lB = Math.round(B + (255 - B) * centerBlend);
+    // Light color — upper lit zone blended toward white.
+    const lightBlend = tier === 2 ? 0.62 : 0.50;
+    const lR = Math.round(R + (255 - R) * lightBlend);
+    const lG = Math.round(G + (255 - G) * lightBlend);
+    const lB = Math.round(B + (255 - B) * lightBlend);
 
-    // Darker shade for rim (30% of original — gives depth)
-    const dR = Math.round(R * 0.30);
-    const dG = Math.round(G * 0.30);
-    const dB = Math.round(B * 0.30);
+    // Shadow color — compressed toward black for the lower dark zone.
+    const dR = Math.round(R * 0.18);
+    const dG = Math.round(G * 0.18);
+    const dB = Math.round(B * 0.18);
 
     const size = 128;
     const cx   = size / 2;
     const cy   = size / 2;
-    const r    = size / 2;
+    const r    = size / 2 - 1;  // 1 px padding for clean circular edge
 
     const canvas = document.createElement("canvas");
     canvas.width  = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d")!;
 
-    // Pass 1: Sphere base — lighter center, full color mid, dark rim
-    const base = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    base.addColorStop(0.00, `rgba(${lR},${lG},${lB},1.00)`);   // lit center
-    base.addColorStop(0.45, `rgba(${R},${G},${B},1.00)`);       // full saturated color
-    base.addColorStop(0.82, `rgba(${dR},${dG},${dB},1.00)`);    // dark rim
-    base.addColorStop(1.00, `rgba(${dR},${dG},${dB},0.00)`);    // transparent edge
-    ctx.fillStyle = base;
+    // Clip all drawing to a circle — turns the rectangle gradient into a sphere.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Pass 1 — vertical light-to-shadow gradient (top lit, bottom shadowed).
+    const vert = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+    vert.addColorStop(0.00, `rgba(255,255,255,1.00)`);        // top: pure white
+    vert.addColorStop(0.12, `rgba(255,255,255,1.00)`);        // hold white across top cap
+    vert.addColorStop(0.28, `rgba(${lR},${lG},${lB},1.00)`); // light color upper zone
+    vert.addColorStop(0.55, `rgba(${R},${G},${B},1.00)`);    // full saturated equator
+    vert.addColorStop(0.78, `rgba(${dR},${dG},${dB},1.00)`); // shadow lower zone
+    vert.addColorStop(0.91, `rgba(4,4,8,1.00)`);              // near-black terminator rim
+    vert.addColorStop(1.00, `rgba(0,0,0,1.00)`);              // black bottom edge shadow
+    ctx.fillStyle = vert;
     ctx.fillRect(0, 0, size, size);
 
-    // Pass 2: Specular highlight — death orbs get a stronger, wider flare
-    const hx       = cx - r * 0.28;
-    const hy       = cy - r * 0.28;
-    const specR    = tier === 2 ? r * 0.58 : r * 0.48;
-    const specPeak = tier === 2 ? 0.98      : 0.92;
-    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, specR);
-    spec.addColorStop(0.00, `rgba(255,255,255,${specPeak})`);
-    spec.addColorStop(0.25, `rgba(255,255,255,${tier === 2 ? 0.80 : 0.65})`);
-    spec.addColorStop(0.60, `rgba(255,255,255,${tier === 2 ? 0.28 : 0.18})`);
+    // Pass 2 — specular hot-spot top-left (secondary bright reflection).
+    const hx      = cx - r * 0.20;
+    const hy      = cy - r * 0.30;
+    const specRad = tier === 2 ? r * 0.38 : r * 0.30;
+    const specPk  = tier === 2 ? 0.95     : 0.88;
+    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, specRad);
+    spec.addColorStop(0.00, `rgba(255,255,255,${specPk})`);
+    spec.addColorStop(0.40, `rgba(255,255,255,${tier === 2 ? 0.55 : 0.40})`);
     spec.addColorStop(1.00, `rgba(255,255,255,0.00)`);
     ctx.fillStyle = spec;
     ctx.fillRect(0, 0, size, size);
+
+    ctx.restore();
 
     return PIXI.Texture.from(canvas);
   }
