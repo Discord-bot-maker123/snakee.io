@@ -193,16 +193,29 @@ export class SnakeRenderer {
 
     let pupilAngle: number;
     if (lookTarget) {
-      // Player: pupils follow mouse
+      // Player: pupils follow mouse cursor.
       pupilAngle = Math.atan2(lookTarget.y - head.y, lookTarget.x - head.x);
+    } else if (snake.targetAngle !== undefined) {
+      // Bot: eyes anticipate the committed target heading.
+      // targetAngle is set by the AI each tick BEFORE the body turns, so it
+      // is naturally a few hundred ms ahead of the actual movement direction.
+      // Mix 78% toward the intended angle and 22% toward current travel so
+      // the transition looks smooth rather than snapping instantly.
+      const now = Date.now() * 0.001;
+      const phase = this.stableHash(snake.id) * 0.013;
+      // Tiny idle drift so eyes feel alive during straight runs.
+      const idleDrift = Math.sin(now * 2.2 + phase) * 0.12;
+      const intendedAngle = snake.targetAngle + idleDrift;
+
+      const ix = Math.cos(intendedAngle) * 0.78 + Math.cos(travelAngle) * 0.22;
+      const iy = Math.sin(intendedAngle) * 0.78 + Math.sin(travelAngle) * 0.22;
+      pupilAngle = Math.atan2(iy, ix);
     } else {
-      // Bot: pupils lead the turn — shift in the direction of rotation
+      // Fallback (no targetAngle): react to change in travel direction.
       const prev = display.prevTravelAngle ?? travelAngle;
-      // Normalise delta to [-π, π]
       let delta = travelAngle - prev;
       delta = ((delta + Math.PI) % (Math.PI * 2)) - Math.PI;
-      // Amplify and clamp so pupils visibly shift when turning
-      const lead = Math.max(-0.6, Math.min(0.6, delta * 8));
+      const lead = Math.max(-0.9, Math.min(0.9, delta * 10));
       pupilAngle = travelAngle + lead;
     }
     display.prevTravelAngle = travelAngle;
@@ -210,8 +223,7 @@ export class SnakeRenderer {
     const eyeSize    = headRadius * 0.44;
     const pupilSize  = eyeSize * 0.62;
     const eyeOffset  = headRadius * 0.52;
-    const pupilTravel = eyeSize * 0.30;
-
+    const pupilTravel = eyeSize * (lookTarget ? 0.30 : 0.40);
     // Left eye
     const lx = head.x + Math.cos(travelAngle - 0.62) * eyeOffset;
     const ly = head.y + Math.sin(travelAngle - 0.62) * eyeOffset;

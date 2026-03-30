@@ -13,6 +13,8 @@ export type SnakeState = {
   alive: boolean;
   boosting: boolean;
   segments: SnakeSegment[];
+  /** Bot only: the committed intended heading (ahead of actual body direction). */
+  targetAngle?: number;
 };
 
 export type OrbState = {

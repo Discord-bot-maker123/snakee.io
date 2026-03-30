@@ -477,6 +477,34 @@ Latest commits:
 
 ---
 
+## Session 9 — Bot Eye Anticipation (2026-03-30)
+
+### Feature
+Bot snakes' eyes now look toward their **intended next direction** before the body physically turns — giving the same anticipatory feel as the player whose eyes follow the mouse.
+
+### Implementation
+Three-file change:
+
+**`shared/types.ts`**
+Added `targetAngle?: number` to `SnakeState`. Optional so it only appears for bots and adds no overhead for the player.
+
+**`server/src/game/Snake.ts` — `toState()`**
+Exposed `this.targetAngle` (the bot's committed heading, set each AI tick via `setBotTarget()`) in the serialized state when `this.isBot === true`. This angle is naturally ahead of the actual body direction because the snake body turns at `SNAKE_TURN_SPEED` over multiple ticks.
+
+**`client/src/game/SnakeRenderer.ts` — `drawSnake()`**
+New bot pupil logic (replaces the old turn-delta reaction approach):
+- When `snake.targetAngle` is present: blend 78% toward intended angle + 22% current travel for smooth visual transition. Adds ±0.12 rad idle drift (`sin`-based) so eyes stay subtly alive during straight runs.
+- Fallback (no `targetAngle`): old turn-delta reaction code retained.
+
+### Why it works
+`targetAngle` is set by the BotAI planner every tick. The snake body steers toward it gradually over multiple ticks at `SNAKE_TURN_SPEED`. So at any given frame, `targetAngle` is already pointing where the snake *will* be heading — the eyes just follow it, creating natural anticipation.
+
+**`shared/dist/`** rebuilt to propagate the type change to both client and server compilers.
+
+Build: `tsc -p shared && tsc -p client && tsc -p server` all ✅
+
+---
+
 ## Session 8 — Orb White-Core Fix (2026-03-27)
 
 ### Problem

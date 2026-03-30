@@ -235,7 +235,10 @@ export class Snake {
       score: this.score,
       alive: this.alive,
       boosting: this.boostingActive,
-      segments: this.segments.map((segment: SnakeSegment) => ({ ...segment }))
+      segments: this.segments.map((segment: SnakeSegment) => ({ ...segment })),
+      // Expose the bot's committed heading so the client can point the eyes
+      // toward it before the body physically catches up.
+      targetAngle: this.isBot ? this.targetAngle : undefined
     };
   }
 }
