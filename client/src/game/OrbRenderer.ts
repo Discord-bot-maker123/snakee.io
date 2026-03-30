@@ -81,12 +81,12 @@ export class OrbRenderer {
       const scaleBreath = entry.tier === 2 ? 0.05 : 0.04;
       const bodyPulse   = 1.0 + sinVal * scaleBreath;
 
-      // Glow alpha: sweeps a wide range so the additive bloom washes the sphere
-      // bright at peak then lets it fall back to its natural dark-edge depth.
-      //   common  → 0.12 … 0.75
-      //   death   → 0.25 … 1.00
-      const glowMin   = entry.tier === 2 ? 0.25 : 0.12;
-      const glowMax   = entry.tier === 2 ? 1.00 : 0.75;
+      // Glow alpha: gentle pulse — colours brighten ~90% then return to depth.
+      // Not a dramatic wash; just enough to feel alive.
+      //   common  → 0.10 … 0.42
+      //   death   → 0.18 … 0.65
+      const glowMin   = entry.tier === 2 ? 0.18 : 0.10;
+      const glowMax   = entry.tier === 2 ? 0.65 : 0.42;
       const glowAlpha = glowMin + (sinVal + 1) * 0.5 * (glowMax - glowMin);
 
       // Brownian drift
@@ -173,71 +173,64 @@ export class OrbRenderer {
     return t;
   }
 
-  // Layer 1 — top-lit 3D sphere.
+  // Layer 1 — sphere with circumference shadow.
   //
-  // Vertical linear gradient clipped to a circle replicates the slither.io
-  // shading as observed:
-  //   top (0–12 %)  → pure white  (direct light from above)
-  //   upper (28 %)  → light tint  (lit upper hemisphere)
-  //   mid   (55 %)  → full color  (equator / saturated zone)
-  //   lower (78 %)  → dark color  (shadow lower hemisphere)
-  //   edge  (91 %)  → near-black  (terminator rim shadow)
-  //   bottom (100%) → black       (deepest shadow edge)
+  // Radial gradient from center outward:
+  //   center      → slightly lighter color (ambient center brightness)
+  //   mid         → full orb color
+  //   outer ring  → darkens all the way around the circumference
+  //   edge        → near-black shadow on the entire rim
   //
-  // A small specular hot-spot offset toward top-left adds the secondary
-  // bright reflection seen on gloss spheres.
+  // Small top-left specular dot adds gloss without making it directionally lit.
   private createBodyTexture(color: number, tier: number): PIXI.Texture {
     const R = (color >> 16) & 0xff;
     const G = (color >>  8) & 0xff;
     const B =  color        & 0xff;
 
-    // Light color — upper lit zone blended toward white.
-    const lightBlend = tier === 2 ? 0.62 : 0.50;
-    const lR = Math.round(R + (255 - R) * lightBlend);
-    const lG = Math.round(G + (255 - G) * lightBlend);
-    const lB = Math.round(B + (255 - B) * lightBlend);
+    // Center: slightly lighter (20% toward white) — subtle, not directional
+    const lR = Math.round(R + (255 - R) * 0.22);
+    const lG = Math.round(G + (255 - G) * 0.22);
+    const lB = Math.round(B + (255 - B) * 0.22);
 
-    // Shadow color — compressed toward black for the lower dark zone.
-    const dR = Math.round(R * 0.18);
-    const dG = Math.round(G * 0.18);
-    const dB = Math.round(B * 0.18);
+    // Rim shadow: compress toward black for the circumference dark ring
+    const dR = Math.round(R * 0.15);
+    const dG = Math.round(G * 0.15);
+    const dB = Math.round(B * 0.15);
 
     const size = 128;
     const cx   = size / 2;
     const cy   = size / 2;
-    const r    = size / 2 - 1;  // 1 px padding for clean circular edge
+    const r    = size / 2 - 1;
 
     const canvas = document.createElement("canvas");
     canvas.width  = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d")!;
 
-    // Clip all drawing to a circle — turns the rectangle gradient into a sphere.
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // Pass 1 — vertical light-to-shadow gradient (top lit, bottom shadowed).
-    const vert = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
-    vert.addColorStop(0.00, `rgba(255,255,255,1.00)`);        // top: pure white
-    vert.addColorStop(0.12, `rgba(255,255,255,1.00)`);        // hold white across top cap
-    vert.addColorStop(0.28, `rgba(${lR},${lG},${lB},1.00)`); // light color upper zone
-    vert.addColorStop(0.55, `rgba(${R},${G},${B},1.00)`);    // full saturated equator
-    vert.addColorStop(0.78, `rgba(${dR},${dG},${dB},1.00)`); // shadow lower zone
-    vert.addColorStop(0.91, `rgba(4,4,8,1.00)`);              // near-black terminator rim
-    vert.addColorStop(1.00, `rgba(0,0,0,1.00)`);              // black bottom edge shadow
-    ctx.fillStyle = vert;
+    // Pass 1 — radial vignette: lighter center → full color → dark rim all around
+    const radial = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    radial.addColorStop(0.00, `rgba(${lR},${lG},${lB},1.00)`); // bright center
+    radial.addColorStop(0.40, `rgba(${R},${G},${B},1.00)`);    // full color mid
+    radial.addColorStop(0.72, `rgba(${R},${G},${B},1.00)`);    // full color holds wide
+    radial.addColorStop(0.86, `rgba(${dR},${dG},${dB},1.00)`); // shadow ring
+    radial.addColorStop(0.95, `rgba(2,2,5,1.00)`);              // near-black circumference
+    radial.addColorStop(1.00, `rgba(0,0,0,1.00)`);              // black edge
+    ctx.fillStyle = radial;
     ctx.fillRect(0, 0, size, size);
 
-    // Pass 2 — specular hot-spot top-left (secondary bright reflection).
-    const hx      = cx - r * 0.20;
-    const hy      = cy - r * 0.30;
-    const specRad = tier === 2 ? r * 0.38 : r * 0.30;
-    const specPk  = tier === 2 ? 0.95     : 0.88;
-    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, specRad);
-    spec.addColorStop(0.00, `rgba(255,255,255,${specPk})`);
-    spec.addColorStop(0.40, `rgba(255,255,255,${tier === 2 ? 0.55 : 0.40})`);
+    // Pass 2 — small top-left specular dot (gloss, not directional lighting)
+    const hx  = cx - r * 0.22;
+    const hy  = cy - r * 0.28;
+    const hr  = r * (tier === 2 ? 0.32 : 0.24);
+    const hpk = tier === 2 ? 0.90 : 0.80;
+    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+    spec.addColorStop(0.00, `rgba(255,255,255,${hpk})`);
+    spec.addColorStop(0.50, `rgba(255,255,255,${tier === 2 ? 0.40 : 0.28})`);
     spec.addColorStop(1.00, `rgba(255,255,255,0.00)`);
     ctx.fillStyle = spec;
     ctx.fillRect(0, 0, size, size);
