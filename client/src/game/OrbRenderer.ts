@@ -64,10 +64,9 @@ export class OrbRenderer {
           glow,
           color:          orb.color,
           tier,
-          // Death orbs: 2× bigger body than their raw size would give
-          baseScale:      (orb.size / 10) * (tier === 2 ? 0.24 : 0.12),
-          // Death orbs: very wide bloom — 6× body size
-          glowMultiplier: tier === 2 ? 6.0 : 3.5,
+          baseScale:      (orb.size / 10) * 0.12,
+          // Death orbs: tighter glow (compact) — other tiers: wide bloom
+          glowMultiplier: tier === 2 ? 2.4 : 3.5,
           value:          orb.value,
           floatSeed:      seed,
         };
@@ -78,15 +77,16 @@ export class OrbRenderer {
       const pulseSpeed = entry.tier === 2 ? 2.4 : 1.8;
       const sinVal     = Math.sin(this.pulseTime * pulseSpeed + entry.floatSeed);
 
-      // Body: subtle breathe — death orbs pulse larger
-      const scaleBreath = entry.tier === 2 ? 0.10 : 0.04;
+      // Body: very subtle size breathe only — the glow handles brightness.
+      const scaleBreath = entry.tier === 2 ? 0.05 : 0.04;
       const bodyPulse   = 1.0 + sinVal * scaleBreath;
 
-      // Glow alpha pulse ranges:
+      // Glow alpha: gentle pulse — colours brighten ~90% then return to depth.
+      // Not a dramatic wash; just enough to feel alive.
       //   common  → 0.10 … 0.42
-      //   death   → 0.45 … 0.95  (intense, near-constant blaze)
-      const glowMin   = entry.tier === 2 ? 0.45 : 0.10;
-      const glowMax   = entry.tier === 2 ? 0.95 : 0.42;
+      //   death   → 0.18 … 0.65
+      const glowMin   = entry.tier === 2 ? 0.18 : 0.10;
+      const glowMax   = entry.tier === 2 ? 0.65 : 0.42;
       const glowAlpha = glowMin + (sinVal + 1) * 0.5 * (glowMax - glowMin);
 
       // Brownian drift
@@ -271,12 +271,11 @@ export class OrbRenderer {
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
 
     if (tier === 2) {
-      // Death orbs: blazing wide bloom — intense core that spreads far out
-      grad.addColorStop(0.00, `rgba(255,255,255,0.95)`);          // white-hot center
-      grad.addColorStop(0.12, `rgba(${R},${G},${B},0.90)`);       // full color inner
-      grad.addColorStop(0.35, `rgba(${R},${G},${B},0.65)`);
-      grad.addColorStop(0.60, `rgba(${R},${G},${B},0.30)`);
-      grad.addColorStop(0.82, `rgba(${R},${G},${B},0.10)`);
+      // Death orbs: intense bright core, steep falloff (compact)
+      grad.addColorStop(0.00, `rgba(${R},${G},${B},0.90)`);
+      grad.addColorStop(0.20, `rgba(${R},${G},${B},0.75)`);
+      grad.addColorStop(0.45, `rgba(${R},${G},${B},0.40)`);
+      grad.addColorStop(0.72, `rgba(${R},${G},${B},0.12)`);
       grad.addColorStop(1.00, `rgba(${R},${G},${B},0.00)`);
     } else {
       // Common / uncommon: soft wide bloom
