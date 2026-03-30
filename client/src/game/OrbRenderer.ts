@@ -64,9 +64,9 @@ export class OrbRenderer {
           glow,
           color:          orb.color,
           tier,
-          baseScale:      (orb.size / 10) * 0.12,
-          // Death orbs: tighter glow (compact) — other tiers: wide bloom
-          glowMultiplier: tier === 2 ? 2.4 : 3.5,
+          baseScale:      (orb.size / 10) * (tier === 2 ? 0.17 : 0.12),
+          // Death orbs: wide bloom — other tiers: standard bloom
+          glowMultiplier: tier === 2 ? 4.5 : 3.5,
           value:          orb.value,
           floatSeed:      seed,
         };
@@ -85,8 +85,8 @@ export class OrbRenderer {
       // Not a dramatic wash; just enough to feel alive.
       //   common  → 0.10 … 0.42
       //   death   → 0.18 … 0.65
-      const glowMin   = entry.tier === 2 ? 0.18 : 0.10;
-      const glowMax   = entry.tier === 2 ? 0.65 : 0.42;
+      const glowMin   = entry.tier === 2 ? 0.30 : 0.10;
+      const glowMax   = entry.tier === 2 ? 0.82 : 0.42;
       const glowAlpha = glowMin + (sinVal + 1) * 0.5 * (glowMax - glowMin);
 
       // Brownian drift
