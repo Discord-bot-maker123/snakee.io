@@ -352,7 +352,8 @@ export class GameScene {
 
   private createBackgroundLayer(): PIXI.Graphics {
     const graphics = new PIXI.Graphics();
-    const hexRadius = 48; // Slightly larger for better clarity
+    // Larger hexes matching reference screenshot — fewer tiles, stronger visual weight.
+    const hexRadius = 82;
     // Flat-topped hex math
     const stepX = hexRadius * 1.5;
     const stepY = Math.sqrt(3) * hexRadius;
@@ -363,21 +364,18 @@ export class GameScene {
       for (let y = -ARENA_RADIUS - stepY; y <= ARENA_RADIUS + stepY; y += stepY) {
         const cx = x;
         const cy = y + yOffset;
-        const distSq = cx * cx + cy * cy;
-        
-        if (distSq > (ARENA_RADIUS) * (ARENA_RADIUS)) {
-          continue;
-        }
+        if (cx * cx + cy * cy > ARENA_RADIUS * ARENA_RADIUS) continue;
 
-        // Slither.io style: Dark tiles with a very thin, slightly brighter grout/edge
-        // Base tile
-        graphics.beginFill(0x0c1016, 1);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.96);
+        // Layer 1 — main tile body. Drawn at 87 % so the dark background
+        // (#05070a) shows through as a clear ~13 % gap between tiles.
+        graphics.beginFill(0x0d1820, 1);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.87);
         graphics.endFill();
 
-        // Subtle inner highlight/bevel for 3D feel
-        graphics.beginFill(0x131922, 0.4);
-        this.drawHexagon(graphics, cx, cy, hexRadius * 0.90);
+        // Layer 2 — subtle center lift. A slightly lighter inset hex fakes the
+        // soft depth gradient seen in the reference (center brighter → edges darker).
+        graphics.beginFill(0x172637, 0.28);
+        this.drawHexagon(graphics, cx, cy, hexRadius * 0.66);
         graphics.endFill();
       }
       rowIndex += 1;

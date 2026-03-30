@@ -64,7 +64,7 @@ export class OrbRenderer {
           glow,
           color:          orb.color,
           tier,
-          baseScale:      (orb.size / 10) * 0.08,
+          baseScale:      (orb.size / 10) * 0.12,
           // Death orbs: tighter glow (compact) — other tiers: wide bloom
           glowMultiplier: tier === 2 ? 2.4 : 3.5,
           value:          orb.value,
